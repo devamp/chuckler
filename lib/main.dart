@@ -10,8 +10,12 @@ import 'Session.dart';
 import 'database/isarDB.dart';
 import 'Theme/theme.dart';
 
-//TODO MAKE SURE TO LOOK AT EMULATOR COMMIT BEFORE PRODUCTION
-//TODO THIS WILL ENSURE THAT EMULATOR CODE IS NOT INCLUDED WITH APP .firebaserc, 2 XMLS in android w/TODOS, Firebase JSON
+/// Set at launch with --dart-define=USE_EMULATOR=true (off by default).
+const bool useEmulator = bool.fromEnvironment('USE_EMULATOR');
+
+/// Where the emulators run. localhost works for the iOS simulator.
+const String emulatorHost =
+    String.fromEnvironment('EMULATOR_HOST', defaultValue: 'localhost');
 
 Future<void> main() async {
   DefaultFirebaseOptions fb = DefaultFirebaseOptions();
@@ -21,12 +25,18 @@ Future<void> main() async {
   try {
     await fb.initializeFirebase();
 
-    ///TODO REMOVE NEXT FOUR LINES BEFORE DEPLOYMENT!!!!
-    FirebaseFirestore.instance.useFirestoreEmulator('localhost', 8080);
-    FirebaseStorage.instance.useStorageEmulator('localhost', 9199);
-    FirebaseFunctions.instance.useFunctionsEmulator('localhost', 5081);
-    await FirebaseAuth.instance.useAuthEmulator('localhost', 9099);
-    ////TODO REMOVE ABOVE BEFORE DEBLOYMENT
+    // Local Firebase emulators are opt-in at launch, never edited in or out:
+    //   flutter run --dart-define=USE_EMULATOR=true
+    // On a physical iPhone, also pass your Mac's LAN IP:
+    //   --dart-define=EMULATOR_HOST=192.168.1.x
+    // Builds without the flag (including release) use production Firebase.
+    if (useEmulator) {
+      FirebaseFirestore.instance.useFirestoreEmulator(emulatorHost, 8080);
+      FirebaseStorage.instance.useStorageEmulator(emulatorHost, 9199);
+      FirebaseFunctions.instance.useFunctionsEmulator(emulatorHost, 5001);
+      await FirebaseAuth.instance.useAuthEmulator(emulatorHost, 9099);
+      debugPrint('Chuckler: using Firebase emulators at $emulatorHost');
+    }
 
 
 
@@ -40,7 +50,7 @@ Future<void> main() async {
       child: const MyApp(),
     ));
   } catch (e) {
-    print("Error initiating Firebase");
+    debugPrint("Error initiating Firebase: $e");
   }
 }
 
