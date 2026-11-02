@@ -81,11 +81,7 @@ class IsarService {
 
   Future<List<DbPrompt>> getDailyPromptsFromDB() async {
     DateTime now = DateTime.now().toUtc();
-    final utcMidnight = now.subtract(Duration(
-        hours: now.hour,
-        minutes: now.minute,
-        seconds: now.second,
-        milliseconds: now.microsecond));
+    final utcMidnight = DateTime.utc(now.year, now.month, now.day);
     final prompts = await db.dbPrompts
         .filter()
         .dateEqualTo(utcMidnight.toIso8601String().substring(0, 10))

@@ -27,20 +27,16 @@ Future<List<DbPrompt>> getDailyPrompts(FirebaseFirestore firestore) async {
   List<DbPrompt> prompts = List.empty(growable: true);
   DateTime now = DateTime.now().toUtc();
   // Calculate UTC midnight
-  final utcMidnight = now.subtract(Duration(
-      hours: now.hour,
-      minutes: now.minute,
-      seconds: now.second,
-      milliseconds: now.microsecond));
-  // Calculate UTC 11:59 (the last second of the day before midnight)
-  final utc1159 = utcMidnight.add(const Duration(days: 1, seconds: -1));
+  final utcMidnight = DateTime.utc(now.year, now.month, now.day);
+  // Calculate the next UTC midnight (the query excludes it)
+  final nextMidnight = utcMidnight.add(const Duration(days: 1));
 
   print("UTC Midnight: $utcMidnight");
-  print("UTC 11:59: $utc1159");
+  print("Next UTC Midnight: $nextMidnight");
   DateTime today = DateTime(now.year, now.month, now.day);
   // Create timestamps for the start and end dates
   Timestamp startDate = Timestamp.fromDate(utcMidnight);
-  Timestamp endDate = Timestamp.fromDate(utc1159);
+  Timestamp endDate = Timestamp.fromDate(nextMidnight);
   QuerySnapshot querySnapshot = await firestore
       .collection('PromptDays')
       .where('date', isGreaterThanOrEqualTo: startDate)

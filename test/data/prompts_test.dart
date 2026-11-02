@@ -23,10 +23,7 @@ void main() {
     final now = DateTime.now().toUtc();
     final todayNoon = DateTime.utc(now.year, now.month, now.day, 12);
     final todayId = todayNoon.toIso8601String().substring(0, 10);
-    final yesterdayId = todayNoon
-        .subtract(const Duration(days: 1))
-        .toIso8601String()
-        .substring(0, 10);
+    final todayMidnight = DateTime.utc(now.year, now.month, now.day);
 
     Future<DocumentReference> seedPromptDay(DateTime date) {
       return firestore
@@ -50,11 +47,7 @@ void main() {
       expect(p.promptId, 'p1');
       // promptDateId is the PromptDays document id
       expect(p.promptDateId, day.id);
-      // TODO(bug): utcMidnight subtracts now.microsecond as milliseconds.
-      // Whenever the microsecond part is larger than the millisecond part
-      // (about half the time), "midnight" lands in the last second of the
-      // previous day and date comes out as yesterday.
-      expect(p.date, anyOf(todayId, yesterdayId));
+      expect(p.date, todayId);
       expect(isAwaitingPrompt(p), isFalse);
     });
 
@@ -108,10 +101,37 @@ void main() {
       expect(prompts.single.promptId, awaitingPromptId);
     });
 
-    // TODO(bug): the same midnight error shifts the query window by up to a
-    // second either way, and isLessThan 23:59:59 skips the day's last second.
-    // Not tested here: the result depends on the exact moment DateTime.now()
-    // runs.
+    Future<String?> promptDayFoundAt(DateTime date) async {
+      final day = await seedPromptDay(date);
+      await day
+          .collection('Prompts')
+          .doc('p1')
+          .set({'before': 'a', 'after': 'b', 'type': 't'});
+      final prompts = await getDailyPrompts(firestore);
+      return isAwaitingPrompt(prompts.single) ? null : prompts.single.promptDateId;
+    }
+
+    test('includes a PromptDays doc dated exactly at UTC midnight', () async {
+      expect(await promptDayFoundAt(todayMidnight), isNotNull);
+    });
+
+    test('includes a PromptDays doc in the last second of the day', () async {
+      final lastMoment = todayMidnight
+          .add(const Duration(days: 1))
+          .subtract(const Duration(milliseconds: 1));
+      expect(await promptDayFoundAt(lastMoment), isNotNull);
+    });
+
+    test('excludes a PromptDays doc dated at the next UTC midnight', () async {
+      final tomorrow = todayMidnight.add(const Duration(days: 1));
+      expect(await promptDayFoundAt(tomorrow), isNull);
+    });
+
+    test('excludes a PromptDays doc just before UTC midnight', () async {
+      final justBefore =
+          todayMidnight.subtract(const Duration(milliseconds: 1));
+      expect(await promptDayFoundAt(justBefore), isNull);
+    });
   });
 
   group('awaiting prompt helpers', () {
