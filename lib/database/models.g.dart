@@ -7,7 +7,7 @@ part of 'models.dart';
 // **************************************************************************
 
 // coverage:ignore-file
-// ignore_for_file: duplicate_ignore, non_constant_identifier_names, constant_identifier_names, invalid_use_of_protected_member, unnecessary_cast, prefer_const_constructors, lines_longer_than_80_chars, require_trailing_commas, inference_failure_on_function_invocation, unnecessary_parenthesis, unnecessary_raw_strings, unnecessary_null_checks, join_return_with_assignment, prefer_final_locals, avoid_js_rounded_ints, avoid_positional_boolean_parameters, always_specify_types
+// ignore_for_file: duplicate_ignore, non_constant_identifier_names, constant_identifier_names, invalid_use_of_protected_member, unnecessary_cast, prefer_const_constructors, lines_longer_than_80_chars, require_trailing_commas, inference_failure_on_function_invocation, unnecessary_parenthesis, unnecessary_raw_strings, unnecessary_null_checks, join_return_with_assignment, prefer_final_locals, avoid_js_rounded_ints, avoid_positional_boolean_parameters, always_specify_types, experimental_member_use
 
 extension GetDbPostCollection on Isar {
   IsarCollection<DbPost> get dbPosts => this.collection();
@@ -98,7 +98,7 @@ const DbPostSchema = CollectionSchema(
   getId: _dbPostGetId,
   getLinks: _dbPostGetLinks,
   attach: _dbPostAttach,
-  version: '3.1.0+1',
+  version: '3.4.1',
 );
 
 int _dbPostEstimateSize(
@@ -2012,7 +2012,7 @@ extension DbPostQueryProperty on QueryBuilder<DbPost, DbPost, QQueryProperty> {
 }
 
 // coverage:ignore-file
-// ignore_for_file: duplicate_ignore, non_constant_identifier_names, constant_identifier_names, invalid_use_of_protected_member, unnecessary_cast, prefer_const_constructors, lines_longer_than_80_chars, require_trailing_commas, inference_failure_on_function_invocation, unnecessary_parenthesis, unnecessary_raw_strings, unnecessary_null_checks, join_return_with_assignment, prefer_final_locals, avoid_js_rounded_ints, avoid_positional_boolean_parameters, always_specify_types
+// ignore_for_file: duplicate_ignore, non_constant_identifier_names, constant_identifier_names, invalid_use_of_protected_member, unnecessary_cast, prefer_const_constructors, lines_longer_than_80_chars, require_trailing_commas, inference_failure_on_function_invocation, unnecessary_parenthesis, unnecessary_raw_strings, unnecessary_null_checks, join_return_with_assignment, prefer_final_locals, avoid_js_rounded_ints, avoid_positional_boolean_parameters, always_specify_types, experimental_member_use
 
 extension GetDbPromptCollection on Isar {
   IsarCollection<DbPrompt> get dbPrompts => this.collection();
@@ -2052,8 +2052,13 @@ const DbPromptSchema = CollectionSchema(
       name: r'promptId',
       type: IsarType.string,
     ),
-    r'type': PropertySchema(
+    r'responses': PropertySchema(
       id: 6,
+      name: r'responses',
+      type: IsarType.long,
+    ),
+    r'type': PropertySchema(
+      id: 7,
       name: r'type',
       type: IsarType.string,
     )
@@ -2069,7 +2074,7 @@ const DbPromptSchema = CollectionSchema(
   getId: _dbPromptGetId,
   getLinks: _dbPromptGetLinks,
   attach: _dbPromptAttach,
-  version: '3.1.0+1',
+  version: '3.4.1',
 );
 
 int _dbPromptEstimateSize(
@@ -2129,7 +2134,8 @@ void _dbPromptSerialize(
   writer.writeLong(offsets[3], object.liked);
   writer.writeString(offsets[4], object.promptDateId);
   writer.writeString(offsets[5], object.promptId);
-  writer.writeString(offsets[6], object.type);
+  writer.writeLong(offsets[6], object.responses);
+  writer.writeString(offsets[7], object.type);
 }
 
 DbPrompt _dbPromptDeserialize(
@@ -2144,10 +2150,11 @@ DbPrompt _dbPromptDeserialize(
     reader.readStringOrNull(offsets[4]),
     reader.readStringOrNull(offsets[5]),
     reader.readStringOrNull(offsets[2]),
-    reader.readStringOrNull(offsets[6]),
+    reader.readStringOrNull(offsets[7]),
   );
   object.id = id;
   object.liked = reader.readLong(offsets[3]);
+  object.responses = reader.readLong(offsets[6]);
   return object;
 }
 
@@ -2171,6 +2178,8 @@ P _dbPromptDeserializeProp<P>(
     case 5:
       return (reader.readStringOrNull(offset)) as P;
     case 6:
+      return (reader.readLong(offset)) as P;
+    case 7:
       return (reader.readStringOrNull(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -3106,6 +3115,59 @@ extension DbPromptQueryFilter
     });
   }
 
+  QueryBuilder<DbPrompt, DbPrompt, QAfterFilterCondition> responsesEqualTo(
+      int value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'responses',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<DbPrompt, DbPrompt, QAfterFilterCondition> responsesGreaterThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'responses',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<DbPrompt, DbPrompt, QAfterFilterCondition> responsesLessThan(
+    int value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'responses',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<DbPrompt, DbPrompt, QAfterFilterCondition> responsesBetween(
+    int lower,
+    int upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'responses',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
   QueryBuilder<DbPrompt, DbPrompt, QAfterFilterCondition> typeIsNull() {
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(const FilterCondition.isNull(
@@ -3332,6 +3394,18 @@ extension DbPromptQuerySortBy on QueryBuilder<DbPrompt, DbPrompt, QSortBy> {
     });
   }
 
+  QueryBuilder<DbPrompt, DbPrompt, QAfterSortBy> sortByResponses() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'responses', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DbPrompt, DbPrompt, QAfterSortBy> sortByResponsesDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'responses', Sort.desc);
+    });
+  }
+
   QueryBuilder<DbPrompt, DbPrompt, QAfterSortBy> sortByType() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'type', Sort.asc);
@@ -3431,6 +3505,18 @@ extension DbPromptQuerySortThenBy
     });
   }
 
+  QueryBuilder<DbPrompt, DbPrompt, QAfterSortBy> thenByResponses() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'responses', Sort.asc);
+    });
+  }
+
+  QueryBuilder<DbPrompt, DbPrompt, QAfterSortBy> thenByResponsesDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'responses', Sort.desc);
+    });
+  }
+
   QueryBuilder<DbPrompt, DbPrompt, QAfterSortBy> thenByType() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'type', Sort.asc);
@@ -3487,6 +3573,12 @@ extension DbPromptQueryWhereDistinct
     });
   }
 
+  QueryBuilder<DbPrompt, DbPrompt, QDistinct> distinctByResponses() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'responses');
+    });
+  }
+
   QueryBuilder<DbPrompt, DbPrompt, QDistinct> distinctByType(
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
@@ -3539,6 +3631,12 @@ extension DbPromptQueryProperty
     });
   }
 
+  QueryBuilder<DbPrompt, int, QQueryOperations> responsesProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'responses');
+    });
+  }
+
   QueryBuilder<DbPrompt, String?, QQueryOperations> typeProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'type');
@@ -3547,7 +3645,7 @@ extension DbPromptQueryProperty
 }
 
 // coverage:ignore-file
-// ignore_for_file: duplicate_ignore, non_constant_identifier_names, constant_identifier_names, invalid_use_of_protected_member, unnecessary_cast, prefer_const_constructors, lines_longer_than_80_chars, require_trailing_commas, inference_failure_on_function_invocation, unnecessary_parenthesis, unnecessary_raw_strings, unnecessary_null_checks, join_return_with_assignment, prefer_final_locals, avoid_js_rounded_ints, avoid_positional_boolean_parameters, always_specify_types
+// ignore_for_file: duplicate_ignore, non_constant_identifier_names, constant_identifier_names, invalid_use_of_protected_member, unnecessary_cast, prefer_const_constructors, lines_longer_than_80_chars, require_trailing_commas, inference_failure_on_function_invocation, unnecessary_parenthesis, unnecessary_raw_strings, unnecessary_null_checks, join_return_with_assignment, prefer_final_locals, avoid_js_rounded_ints, avoid_positional_boolean_parameters, always_specify_types, experimental_member_use
 
 extension GetDbUserCollection on Isar {
   IsarCollection<DbUser> get dbUsers => this.collection();
@@ -3651,7 +3749,7 @@ const DbUserSchema = CollectionSchema(
   getId: _dbUserGetId,
   getLinks: _dbUserGetLinks,
   attach: _dbUserAttach,
-  version: '3.1.0+1',
+  version: '3.4.1',
 );
 
 int _dbUserEstimateSize(
@@ -5626,7 +5724,7 @@ extension DbUserQueryProperty on QueryBuilder<DbUser, DbUser, QQueryProperty> {
 }
 
 // coverage:ignore-file
-// ignore_for_file: duplicate_ignore, non_constant_identifier_names, constant_identifier_names, invalid_use_of_protected_member, unnecessary_cast, prefer_const_constructors, lines_longer_than_80_chars, require_trailing_commas, inference_failure_on_function_invocation, unnecessary_parenthesis, unnecessary_raw_strings, unnecessary_null_checks, join_return_with_assignment, prefer_final_locals, avoid_js_rounded_ints, avoid_positional_boolean_parameters, always_specify_types
+// ignore_for_file: duplicate_ignore, non_constant_identifier_names, constant_identifier_names, invalid_use_of_protected_member, unnecessary_cast, prefer_const_constructors, lines_longer_than_80_chars, require_trailing_commas, inference_failure_on_function_invocation, unnecessary_parenthesis, unnecessary_raw_strings, unnecessary_null_checks, join_return_with_assignment, prefer_final_locals, avoid_js_rounded_ints, avoid_positional_boolean_parameters, always_specify_types, experimental_member_use
 
 extension GetDbCommentCollection on Isar {
   IsarCollection<DbComment> get dbComments => this.collection();
@@ -5658,7 +5756,7 @@ const DbCommentSchema = CollectionSchema(
   getId: _dbCommentGetId,
   getLinks: _dbCommentGetLinks,
   attach: _dbCommentAttach,
-  version: '3.1.0+1',
+  version: '3.4.1',
 );
 
 int _dbCommentEstimateSize(
@@ -6272,7 +6370,7 @@ extension DbCommentQueryProperty
 }
 
 // coverage:ignore-file
-// ignore_for_file: duplicate_ignore, non_constant_identifier_names, constant_identifier_names, invalid_use_of_protected_member, unnecessary_cast, prefer_const_constructors, lines_longer_than_80_chars, require_trailing_commas, inference_failure_on_function_invocation, unnecessary_parenthesis, unnecessary_raw_strings, unnecessary_null_checks, join_return_with_assignment, prefer_final_locals, avoid_js_rounded_ints, avoid_positional_boolean_parameters, always_specify_types
+// ignore_for_file: duplicate_ignore, non_constant_identifier_names, constant_identifier_names, invalid_use_of_protected_member, unnecessary_cast, prefer_const_constructors, lines_longer_than_80_chars, require_trailing_commas, inference_failure_on_function_invocation, unnecessary_parenthesis, unnecessary_raw_strings, unnecessary_null_checks, join_return_with_assignment, prefer_final_locals, avoid_js_rounded_ints, avoid_positional_boolean_parameters, always_specify_types, experimental_member_use
 
 extension GetDbNotificationCollection on Isar {
   IsarCollection<DbNotification> get dbNotifications => this.collection();
@@ -6314,7 +6412,7 @@ const DbNotificationSchema = CollectionSchema(
   getId: _dbNotificationGetId,
   getLinks: _dbNotificationGetLinks,
   attach: _dbNotificationAttach,
-  version: '3.1.0+1',
+  version: '3.4.1',
 );
 
 int _dbNotificationEstimateSize(

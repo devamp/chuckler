@@ -11,7 +11,7 @@ import file_selector_macos
 import firebase_auth
 import firebase_core
 import firebase_storage
-import isar_flutter_libs
+import isar_community_flutter_libs
 import shared_preferences_foundation
 
 func RegisterGeneratedPlugins(registry: FlutterPluginRegistry) {

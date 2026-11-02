@@ -1,21 +1,15 @@
 PODS:
   - Flutter (1.0.0)
-  - isar_flutter_libs (1.0.0):
-    - Flutter
 
 DEPENDENCIES:
   - Flutter (from `Flutter`)
-  - isar_flutter_libs (from `.symlinks/plugins/isar_flutter_libs/ios`)
 
 EXTERNAL SOURCES:
   Flutter:
     :path: Flutter
-  isar_flutter_libs:
-    :path: ".symlinks/plugins/isar_flutter_libs/ios"
 
 SPEC CHECKSUMS:
   Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
-  isar_flutter_libs: 9fc2cfb928c539e1b76c481ba5d143d556d94920
 
 PODFILE CHECKSUM: 68b158af3850b93916eb62161bf8e115081a820e
 
