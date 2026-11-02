@@ -41,7 +41,7 @@ npm run deploy        # firebase deploy --only functions
 
 Emulator mode is opt-in only, through `USE_EMULATOR`. Never hardcode emulator calls into `lib/main.dart`. Builds without the flag must hit production.
 
-Tests run without Firebase: `test/data/` covers the query functions against `fake_cloud_firestore` (shared fixtures in `test/data/helpers.dart`), and `test/state/` covers the ChangeNotifier services. They are characterization tests: they describe current behavior, and suspected bugs are matched as-is and marked `TODO(bug)` rather than fixed. `test/widgets/` renders individual screens with fake services at iPhone sizes; `MyApp` itself is not tested, because it needs Firebase and Isar to start.
+Tests run without Firebase: `test/data/` covers the query functions against `fake_cloud_firestore` (shared fixtures in `test/data/helpers.dart`), and `test/state/` covers the ChangeNotifier services. They are characterization tests: they describe current behavior, and suspected bugs are matched as-is and marked `TODO(bug)` rather than fixed. `test/widgets/` renders individual screens with fake services at iPhone sizes (`test/widgets/fonts.dart` loads the real fonts for overflow checks); `MyApp` itself is not tested, because it needs Firebase and Isar to start.
 
 ## Architecture
 
@@ -51,6 +51,7 @@ Tests run without Firebase: `test/data/` covers the query functions against `fak
   - `PromptService`: today's prompts and the user's post for each one; `logout()` clears these (and only these).
   - `FeedService`: feed posts, the current feed prompt id, and the viewing post/color.
   - `VotingService`: the Home tab's swipe-voting queue, the user's votes and the back history.
+  - `CreateService`: the Create tab's prompt pages (live prompts, plus sample prompts in debug builds when none is live), the user's answer or draft per prompt, per-prompt stats and the answer streak.
   Screens look up only the services they read, e.g. `Provider.of<SessionService>(context, listen: false)`.
 - `IsarService` (`lib/database/isarDB.dart`), the local on-device cache.
 - `FirebaseFirestore.instance`, injected so query functions receive it as a parameter.
@@ -60,6 +61,7 @@ Tests run without Firebase: `test/data/` covers the query functions against `fak
 **Data layer: two tiers**
 - Remote: `lib/data/` holds top-level async Firestore functions grouped by feature: `prompts.dart`, `posts.dart`, `users.dart`, `friends.dart`, `comments.dart`. Each takes a `FirebaseFirestore` argument. Firestore collections: `Users`, `Posts`, `Comments`, `PromptDays`, `MatchUps`, `Notifications`.
 - `lib/data/matchups.dart` (swipe voting) still runs on sample data from `sample_matchups.dart`; its `TODO(cloud)` notes list the MatchUps/Votes fields, queries, rules and Cloud Functions it needs.
+- `lib/data/prompt_stats.dart` (Create tab stats) reads only the live answer count; debug builds fill the rest from `sample_prompts.dart`, release builds show zeros. Its `TODO(cloud)` notes list the counters and functions it needs. Answers to sample prompts stay on the phone and never reach Firestore.
 - When today has no prompt, `getDailyPrompts` returns a placeholder prompt (`awaitingPrompt()`, checked with `isAwaitingPrompt`). It has a null date so the Isar cache never serves it, and the create page refuses to post to it.
 - Local: Isar (the community fork, `isar_community` 3.4.x, which supports Swift Package Manager) models in `lib/database/models.dart` (`DbPost`, `DbPrompt`, `DbUser`, `DbComment`, `DbNotification`). `models.g.dart` is generated, so don't hand-edit it. Fetched Firestore data is mapped into these models, cached in Isar, and pushed into the `lib/state/` services for the UI.
 - `lib/db.dart` is an older SharedPreferences-based store, still used by the login flow for things like caching the last login time.

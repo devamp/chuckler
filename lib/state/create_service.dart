@@ -1,0 +1,111 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import '../data/prompt_stats.dart';
+import '../data/prompts.dart';
+import '../data/sample_prompts.dart';
+import '../database/models.dart';
+
+/// The Create tab: which prompt is showing, the user's answer or unsent draft
+/// for each one, and each prompt's stats. Live prompts come from
+/// PromptService and sample prompts may follow them. Drafts and answers to
+/// sample prompts survive reloads, so leaving the tab keeps them.
+class CreateService with ChangeNotifier {
+  List<DbPrompt> _prompts = List.empty(growable: true);
+  List<DbPost?> _posts = List.empty(growable: true);
+  int _page = 0;
+  int _streak = 0;
+  final Map<String, String> _drafts = {};
+  final Map<String, PromptStats> _stats = {};
+  Map<String, DbPost>? _samplePosts;
+
+  List<DbPrompt> get prompts => _prompts;
+  int get page => _page;
+  int get length => _prompts.length;
+  int get streak => _streak;
+
+  DbPrompt? get current => _page < _prompts.length ? _prompts[_page] : null;
+
+  /// The user's answer to prompt i, or null
+  DbPost? postFor(int i) => i < _posts.length ? _posts[i] : null;
+  bool answered(int i) => postFor(i) != null;
+  int get answeredCount => _posts.where((p) => p != null).length;
+
+  /// Prompts the user can answer, leaving out the awaiting placeholder
+  int get answerableCount => _prompts.where((p) => !isAwaitingPrompt(p)).length;
+
+  String draftFor(int i) => _drafts[_key(_prompts[i])] ?? '';
+  PromptStats? statsFor(int i) => _stats[_key(_prompts[i])];
+
+  String _key(DbPrompt p) => '${p.promptDateId}/${p.promptId}';
+
+  /// Shows the live prompts, followed by the sample prompts when
+  /// includeSamples is set. livePosts[i] is the user's answer to live[i].
+  void setPrompts(List<DbPrompt> live, List<DbPost?> livePosts,
+      {bool includeSamples = false, String uid = '', String username = ''}) {
+    _prompts = [...live];
+    _posts = [
+      for (int i = 0; i < live.length; i++)
+        i < livePosts.length ? livePosts[i] : null
+    ];
+    if (includeSamples) {
+      _samplePosts ??= sampleAnsweredPosts(uid, username);
+      for (DbPrompt p in samplePrompts()) {
+        _prompts.add(p);
+        _posts.add(_samplePosts![p.promptId]);
+      }
+    }
+    if (_page >= _prompts.length) {
+      _page = 0;
+    }
+    notifyListeners();
+  }
+
+  void setPage(int i) {
+    if (i == _page || i < 0 || i >= _prompts.length) return;
+    _page = i;
+    notifyListeners();
+  }
+
+  void setDraft(int i, String text) {
+    _drafts[_key(_prompts[i])] = text;
+    notifyListeners();
+  }
+
+  /// Records the user's answer to prompt i and clears its draft
+  void markPosted(int i, DbPost post) {
+    _posts[i] = post;
+    _drafts.remove(_key(_prompts[i]));
+    if (isSamplePrompt(_prompts[i])) {
+      _samplePosts![_prompts[i].promptId!] = post;
+    }
+    notifyListeners();
+  }
+
+  /// Fetches stats for every answerable prompt, or only for prompt [only]
+  Future<void> loadStats(FirebaseFirestore firestore, String uid,
+      {int? only}) async {
+    final prompts = _prompts;
+    for (int i = 0; i < prompts.length; i++) {
+      if ((only != null && i != only) || isAwaitingPrompt(prompts[i])) {
+        continue;
+      }
+      final stats = await getPromptStats(firestore, uid, prompts[i], postFor(i));
+      _stats[_key(prompts[i])] = stats;
+    }
+    if (only == null) {
+      _streak = await getAnswerStreak(firestore, uid);
+    }
+    notifyListeners();
+  }
+
+  void logout() {
+    _prompts = List.empty(growable: true);
+    _posts = List.empty(growable: true);
+    _page = 0;
+    _streak = 0;
+    _drafts.clear();
+    _stats.clear();
+    _samplePosts = null;
+    notifyListeners();
+  }
+}

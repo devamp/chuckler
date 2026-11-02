@@ -20,12 +20,15 @@ Later, if the app grows, Local and Global prompt slots could be sold to companie
 - The app remembers which prompts the user has answered, both on the phone and on the account, so answered prompts still show as answered after a reinstall or on another device.
 - The segment badge reflects the prompt's type (above).
 - Dismiss the keyboard when swiping, so horizontal drags in the text field don't fight the swipe.
+- **Stats on every prompt:** answers, votes and friends who answered on the card; once you answer, your answer's matchups, wins, win rate, downvotes, rank ("#12 of 340 · Top 4%") and wins per hour. An answer streak sits in the header.
 
-**Today:**
-- `lib/pages/createpage/CreatePageContent.dart` cycles prompts with chevron buttons (`promptVal`), so a `PageView` can reuse that index.
-- Answered state lives in `PromptService.userPostsForPrompts`, filled at login by `getUserPostForPrompt` in `lib/data/posts.dart` with one Firestore query per prompt. It is not cached in Isar.
-- `DbPrompt.type` is read from Firestore but unused by the UI; it may hold the segment.
-- `lib/pages/createpage/prompt_identifier.dart` is the badge. Its popup text is a placeholder ("HERE IS WHAT A DAILY IS!").
+**Built so far (live prompts, sample stats):** `lib/pages/createpage/` is a `PageView` of prompt cards (`create_prompt_card.dart`) with page dots, a time-left label, the answer box (`create_answer_box.dart`) and the stats widgets (`create_stats.dart`). `CreateService` keeps drafts per prompt across swipes and tab switches. Posting to a live prompt works as before (Posts doc, Isar cache, post count). With no live prompt, debug builds add three sample prompts (one per segment, one already answered) whose answers stay on the phone.
+
+**Still to do:**
+- Cloud counters for the stats: see the `TODO(cloud)` notes in `lib/data/prompt_stats.dart` (prompt votes; post matchups, votes, downvotes, winsByHour and rank; the user's streak). The time-left label assumes prompts close at UTC midnight until lifetimes exist.
+- Friends who answered needs friends lists by uid (Prerequisites).
+- Cache answered state in Isar so it shows before the per-prompt Firestore queries at login finish (today it lives in `PromptService.userPostsForPrompts`, filled by `getUserPostForPrompt`).
+- The old like/dislike-the-prompt buttons were removed: they saved nothing. Bring back prompt rating if creators need the feedback (it would need a PromptRatings collection).
 
 ## 2. Home tab: swipe voting
 

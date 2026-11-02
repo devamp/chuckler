@@ -6,6 +6,7 @@ import 'package:chuckler/route_generator.dart';
 import 'package:provider/provider.dart';
 import './firebase/firebase_options.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'state/create_service.dart';
 import 'state/feed_service.dart';
 import 'state/prompt_service.dart';
 import 'state/session_service.dart';
@@ -50,6 +51,7 @@ Future<void> main() async {
         ChangeNotifierProvider(create: (context) => PromptService()),
         ChangeNotifierProvider(create: (context) => FeedService()),
         ChangeNotifierProvider(create: (context) => VotingService()),
+        ChangeNotifierProvider(create: (context) => CreateService()),
         Provider<IsarService>(create: (context) => IsarService()),
         Provider<FirebaseFirestore>(create: (context) => FirebaseFirestore.instance)
       ],

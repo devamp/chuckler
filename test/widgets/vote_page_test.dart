@@ -8,10 +8,10 @@ import 'package:chuckler/state/voting_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'fonts.dart';
 
 void main() {
   late VotingService voting;
@@ -223,18 +223,6 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getBool(voteTutorialSeenKey), isTrue);
   });
-
-  // The default test font draws every glyph as a full square, which makes
-  // text far wider than on a phone. Load the app's OpenSans, also under the
-  // default family name, so the Home top row is measured realistically.
-  Future<void> loadRealFonts() async {
-    for (final family in ['OpenSans', 'Roboto', '.SF UI Text', '.SF Pro Text']) {
-      final loader = FontLoader(family)
-        ..addFont(rootBundle.load('assets/fonts/OpenSans-Regular.ttf'))
-        ..addFont(rootBundle.load('assets/fonts/OpenSans-Bold.ttf'));
-      await loader.load();
-    }
-  }
 
   for (final size in const [Size(393, 852), Size(375, 667)]) {
     testWidgets('Home opens on Vote, with the toggle fitting at $size',

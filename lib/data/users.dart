@@ -63,7 +63,7 @@ Future<DbUser?> getAUser(FirebaseFirestore firebase, String uid) async {
 
 /// Description increment user number of posts
 Future<void> incrementNumPosts(FirebaseFirestore firestore, String uid) async {
-  firestore
+  await firestore
       .collection('Users')
       .doc(uid)
       .update({'posts': FieldValue.increment(1)});

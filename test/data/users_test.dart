@@ -93,15 +93,16 @@ void main() {
 
   group('user updates', () {
     test('incrementNumPosts adds one to posts', () async {
-      // TODO(bug): the update is not awaited, so callers cannot tell when it
-      // lands and its errors escape.
       await firestore.collection('Users').doc('u1').set(userDoc(posts: 3));
 
       await incrementNumPosts(firestore, 'u1');
-      await settle();
 
       final doc = await firestore.collection('Users').doc('u1').get();
       expect(doc.data()!['posts'], 4);
+    });
+
+    test('incrementNumPosts throws for a missing user', () async {
+      expect(incrementNumPosts(firestore, 'nobody'), throwsA(anything));
     });
 
     test('updateProfilePhoto sets profileImage', () async {

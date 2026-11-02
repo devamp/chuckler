@@ -135,7 +135,7 @@ void main() {
   });
 
   group('awaiting prompt helpers', () {
-    // CreatePageContent.postData returns early for this prompt, so nothing is
+    // the Create page refuses to post for this prompt, so nothing is
     // posted until today's prompt exists.
     test('isAwaitingPrompt only matches the placeholder', () {
       expect(isAwaitingPrompt(awaitingPrompt()), isTrue);
