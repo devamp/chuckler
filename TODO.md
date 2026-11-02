@@ -46,8 +46,10 @@ A matchup shows two answer cards stacked vertically.
 - Accept swipes only when they start on the cards, away from the screen edges, so they don't collide with the iOS home and Notification Center gestures.
 - Each card shows whether the answer is from a friend, local or global. Not filtered by default; the user can filter to specific types. Friend and Local are relative to the viewer, so the tag is worked out per viewer, not stored on the post.
 
+**Built so far (sample data, no Firestore yet):** the Vote | Past toggle on Home, the swipe screen (`lib/pages/feedpage/feedpage_vote.dart`, `feedpage_vote_card.dart`), `VotingService`, results, the one-time tutorial and a placeholder for matchup comments. `lib/data/matchups.dart` holds `TODO(cloud)` notes for the real queries, Votes collection, rules and Cloud Functions.
+
 **Today:**
-- The feed is built from `Posts` via `getPosts`. The app does not read `MatchUps` yet; the Cloud Function `createMatchup` writes them, but functions do not run on the free Spark plan (they do in the emulator).
+- The Past view is the existing feed, built from `Posts` via `getPosts`. The app does not read `MatchUps` yet; the Cloud Function `createMatchup` writes them, but functions do not run on the free Spark plan (they do in the emulator).
 - The Global/Local/Friends dropdown (`DropdownButtonExample` in `feed_page.dart`) only changes its own label.
 - `likeAPost` and `postWin` exist in `lib/data/posts.dart`, but every call to them is commented out, and `likeAPost` increments a counter without awaiting it. Neither supports one-vote-per-user.
 - Comments are stored per answer (`Comments` keyed by `postId`). Matchup comments need a new model keyed by matchup.

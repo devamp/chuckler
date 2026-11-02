@@ -46,10 +46,11 @@ Tests run without Firebase: `test/data/` covers the query functions against `fak
 ## Architecture
 
 **Startup (`lib/main.dart`)**: opens the Isar DB, initializes Firebase (`lib/firebase/firebase_options.dart`), optionally connects the emulators, then wraps `MyApp` in a `MultiProvider` that supplies:
-- Three `ChangeNotifier`s in `lib/state/`:
+- `ChangeNotifier`s in `lib/state/`:
   - `SessionService`: the logged-in `DbUser`, last login time and `firstLogin`.
   - `PromptService`: today's prompts and the user's post for each one; `logout()` clears these (and only these).
   - `FeedService`: feed posts, the current feed prompt id, and the viewing post/color.
+  - `VotingService`: the Home tab's swipe-voting queue, the user's votes and the back history.
   Screens look up only the services they read, e.g. `Provider.of<SessionService>(context, listen: false)`.
 - `IsarService` (`lib/database/isarDB.dart`), the local on-device cache.
 - `FirebaseFirestore.instance`, injected so query functions receive it as a parameter.
@@ -58,6 +59,7 @@ Tests run without Firebase: `test/data/` covers the query functions against `fak
 
 **Data layer: two tiers**
 - Remote: `lib/data/` holds top-level async Firestore functions grouped by feature: `prompts.dart`, `posts.dart`, `users.dart`, `friends.dart`, `comments.dart`. Each takes a `FirebaseFirestore` argument. Firestore collections: `Users`, `Posts`, `Comments`, `PromptDays`, `MatchUps`, `Notifications`.
+- `lib/data/matchups.dart` (swipe voting) still runs on sample data from `sample_matchups.dart`; its `TODO(cloud)` notes list the MatchUps/Votes fields, queries, rules and Cloud Functions it needs.
 - When today has no prompt, `getDailyPrompts` returns a placeholder prompt (`awaitingPrompt()`, checked with `isAwaitingPrompt`). It has a null date so the Isar cache never serves it, and the create page refuses to post to it.
 - Local: Isar (the community fork, `isar_community` 3.4.x, which supports Swift Package Manager) models in `lib/database/models.dart` (`DbPost`, `DbPrompt`, `DbUser`, `DbComment`, `DbNotification`). `models.g.dart` is generated, so don't hand-edit it. Fetched Firestore data is mapped into these models, cached in Isar, and pushed into the `lib/state/` services for the UI.
 - `lib/db.dart` is an older SharedPreferences-based store, still used by the login flow for things like caching the last login time.

@@ -17,12 +17,21 @@ import 'feedpage_promptarea.dart';
 import 'package:chuckler/CustomReusableWidgets/custom_text_widgets.dart';
 import 'no_user_post.dart';
 import 'matchup.dart';
+import 'feedpage_vote.dart';
 
-class FeedPage extends StatelessWidget {
+class FeedPage extends StatefulWidget {
   const FeedPage({super.key});
 
+  @override
+  State<FeedPage> createState() => _FeedPageState();
+}
+
+class _FeedPageState extends State<FeedPage> {
   //TODO REPLACE WITH DYNAMIC DATA
   final havePosted = true;
+
+  //false shows swipe voting, true shows past responses
+  bool showPast = false;
 
   @override
   Widget build(BuildContext context) {
@@ -42,14 +51,55 @@ class FeedPage extends StatelessWidget {
           children: [
             Expanded(flex: 2, child: Container(
               alignment: Alignment.bottomLeft,
-              child: DropdownButtonExample(),
+              child: Row(
+                children: [
+                  DropdownButtonExample(),
+                  const Spacer(),
+                  voteOrPastToggle(),
+                ],
+              ),
             )),
             Expanded(
                 flex: 15,
                 /// havePosted ? const CreateForm() :
-                child:havePosted ? const CreateForm() :  const NoUserPost())
+                child: !showPast
+                    ? const VotePage()
+                    : havePosted ? const CreateForm() :  const NoUserPost())
           ],
         ));
+  }
+
+  Widget voteOrPastToggle() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(0, 0, 16, 6),
+      decoration: BoxDecoration(
+          color: Colors.black54, borderRadius: BorderRadius.circular(20)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          toggleOption('Vote', !showPast, () => setState(() => showPast = false)),
+          toggleOption('Past', showPast, () => setState(() => showPast = true)),
+        ],
+      ),
+    );
+  }
+
+  Widget toggleOption(String label, bool selected, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+            color: selected ? Colors.amberAccent : Colors.transparent,
+            borderRadius: BorderRadius.circular(20)),
+        child: Text(label,
+            style: TextStyle(
+                color: selected ? Colors.black : Colors.white,
+                fontFamily: 'OpenSans',
+                fontWeight: FontWeight.bold,
+                fontSize: 16)),
+      ),
+    );
   }
 }
 
