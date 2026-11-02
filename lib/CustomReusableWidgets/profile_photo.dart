@@ -2,6 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_profile_picture/flutter_profile_picture.dart';
 import 'package:flutter_svg/svg.dart';
 
+/// ProfilePicture builds initials from the space-separated words of a name
+/// and throws a RangeError on an empty word, so strip leading, trailing and
+/// repeated spaces before passing a name to it.
+String profilePictureName(String name) {
+  return name.trim().split(RegExp(r'\s+')).join(' ');
+}
+
 class ProfilePhoto extends StatelessWidget {
   final String username;
   final String? img;
@@ -19,7 +26,7 @@ class ProfilePhoto extends StatelessWidget {
       Center(
           child: img == ""
               ? ProfilePicture(
-                  name: username,
+                  name: profilePictureName(username),
                   radius: radius,
                   fontsize: (radius * 0.9),
                 )

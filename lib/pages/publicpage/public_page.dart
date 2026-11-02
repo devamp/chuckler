@@ -3,6 +3,7 @@ import 'package:chuckler/pages/accountpage/account_awards.dart';
 import 'package:chuckler/pages/publicpage/render_post.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_profile_picture/flutter_profile_picture.dart';
+import 'package:chuckler/CustomReusableWidgets/profile_photo.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import 'package:flutter/material.dart';
@@ -110,7 +111,7 @@ Widget publicPageHeader(BuildContext context, String username, bool isFollowing,
     padding: const EdgeInsets.only(bottom: 20),
     child: Column(
       children: [
-        ProfilePicture(name: username, radius: 55, fontsize: 20),
+        ProfilePicture(name: profilePictureName(username), radius: 55, fontsize: 20),
         const SizedBox(height: 12),
         Text(
           username,

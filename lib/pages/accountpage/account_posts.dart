@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:chuckler/database/models.dart';
 import 'package:flutter_profile_picture/flutter_profile_picture.dart';
+import 'package:chuckler/CustomReusableWidgets/profile_photo.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:provider/provider.dart';
 
@@ -48,7 +49,7 @@ class AccountPosts extends StatelessWidget {
                         Row(
                           children: [
                             ProfilePicture(
-                                name: sessionService.loggedInUser!.username!,
+                                name: profilePictureName(sessionService.loggedInUser!.username!),
                                 radius: 20,
                                 fontsize: 20),
                             const SizedBox(width: 10),

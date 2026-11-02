@@ -106,7 +106,8 @@ class _SignupState extends State<SignupPage> {
                   const SizedBox(height: 20),
                   TextField(
                     onChanged: (text) {
-                      username = text;
+                      //keyboard suggestions leave a trailing space
+                      username = text.trim();
                     },
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(

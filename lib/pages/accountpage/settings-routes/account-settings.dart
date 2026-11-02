@@ -63,7 +63,7 @@ class AccountSettingsPage extends StatelessWidget {
               bottom: 50.0, left: 10.0, right: 10.0, top: 10),
           child: Column(
             children: [
-              ProfilePicture(name: username, radius: 50, fontsize: 20),
+              ProfilePicture(name: profilePictureName(username), radius: 50, fontsize: 20),
               const SizedBox(height: 10),
               const Text(
                 'Change photo',

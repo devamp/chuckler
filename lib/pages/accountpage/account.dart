@@ -3,6 +3,7 @@ import 'package:chuckler/pages/accountpage/notifications.dart';
 import 'package:chuckler/pages/accountpage/settings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_profile_picture/flutter_profile_picture.dart';
+import 'package:chuckler/CustomReusableWidgets/profile_photo.dart';
 import 'package:provider/provider.dart';
 import '../../state/session_service.dart';
 import '../../Theme/theme.dart';
@@ -71,7 +72,6 @@ class _AccountState extends State<Account> {
 
     return Container(
       width: screenWidth,
-      height: screenHeight * 0.45,
       decoration: const BoxDecoration(
         color: Colors.black54,
         borderRadius: BorderRadius.only(
@@ -82,11 +82,12 @@ class _AccountState extends State<Account> {
       child: Padding(
         padding: EdgeInsets.only(top: 50),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.center,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             ProfilePicture(
-                name: sessionService.loggedInUser!.username!,
+                name: profilePictureName(sessionService.loggedInUser!.username!),
                 radius: 55,
                 fontsize: 20),
             const SizedBox(height: 12),
