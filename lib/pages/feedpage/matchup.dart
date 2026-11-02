@@ -1,7 +1,6 @@
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:chuckler/CustomReusableWidgets/custom_buttons.dart';
 import 'package:chuckler/CustomReusableWidgets/profile_photo.dart';
-import 'package:chuckler/Session.dart';
 import 'package:chuckler/pages/feedpage/comment_form.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';

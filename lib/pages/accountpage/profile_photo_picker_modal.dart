@@ -4,7 +4,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
-import 'package:chuckler/Session.dart';
+import 'package:chuckler/state/session_service.dart';
 import 'package:chuckler/data/users.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../CustomReusableWidgets/profile_photo.dart';
@@ -21,7 +21,7 @@ class ProfilePhotoPickerModal extends StatelessWidget {
     FirebaseFirestore firestore = Provider.of<FirebaseFirestore>(context, listen: false);
     return InkWell(
         onTap: () async {
-          UserService userService = Provider.of<UserService>(context, listen: false);
+          SessionService sessionService = Provider.of<SessionService>(context, listen: false);
           //TODO ENSURE THAT IMAGE PICKER HAS PROPER RIGHTS FOR ANDROID AND IOS
           ImagePicker imagePicker = ImagePicker();
           XFile? file =
@@ -40,8 +40,8 @@ class ProfilePhotoPickerModal extends StatelessWidget {
             //TODO MAKE SURE THAT AUTHOR IS ADDED TO META DATA AND ONLY THE AUTHOR CAN EDIT
             await imageToUpload.putFile(File(file.path));
             String pfp =await imageToUpload.getDownloadURL();
-            if(pfp != userService.loggedInUser!.profilePicture) {
-              userService.setUserProfilePicture(pfp);
+            if(pfp != sessionService.loggedInUser!.profilePicture) {
+              sessionService.setUserProfilePicture(pfp);
               updateProfilePhoto(firestore, pfp, auth.currentUser!.uid);
             }
           } catch (error) {}

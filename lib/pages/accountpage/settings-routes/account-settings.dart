@@ -2,7 +2,7 @@ import 'package:chuckler/CustomReusableWidgets/profile_photo.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_profile_picture/flutter_profile_picture.dart';
 import 'package:provider/provider.dart';
-import '../../../Session.dart';
+import '../../../state/session_service.dart';
 
 class AccountSettingsPage extends StatelessWidget {
   const AccountSettingsPage({super.key});
@@ -49,8 +49,8 @@ class AccountSettingsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    UserService userService = Provider.of<UserService>(context, listen: true);
-    String username = userService.loggedInUser!.username!;
+    SessionService sessionService = Provider.of<SessionService>(context, listen: true);
+    String username = sessionService.loggedInUser!.username!;
 
     return Scaffold(
       appBar: AppBar(
@@ -75,7 +75,7 @@ class AccountSettingsPage extends StatelessWidget {
               ),
               const SizedBox(height: 25),
               buildAccountSettingOption(Icons.person, 'Username',
-                  userService.loggedInUser!.username!, Icons.chevron_right),
+                  sessionService.loggedInUser!.username!, Icons.chevron_right),
               buildAccountSettingOption(Icons.email, 'Email',
                   'exampleuser@gmail.com', Icons.chevron_right),
               buildAccountSettingOption(

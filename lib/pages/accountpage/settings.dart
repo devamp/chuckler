@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:provider/provider.dart';
 
-import '../../Session.dart';
+import '../../state/prompt_service.dart';
 
 class Settings extends StatelessWidget {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -51,10 +51,8 @@ class Settings extends StatelessWidget {
                         children: [
                           GestureDetector(
                             onTap: () async {
-                              UserService userSession =
-                                  Provider.of<UserService>(context,
-                                      listen: false);
-                              userSession.logout();
+                              PromptService promptService = Provider.of<PromptService>(context, listen: false);
+                              promptService.logout();
                               await _auth.signOut();
                               Navigator.pushReplacementNamed(context, '/login');
                             },

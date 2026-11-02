@@ -3,7 +3,9 @@ import 'package:chuckler/CustomReusableWidgets/custom_buttons.dart';
 import 'package:chuckler/CustomReusableWidgets/profile_photo.dart';
 import 'package:chuckler/data/users.dart';
 import 'package:chuckler/data/posts.dart';
-import 'package:chuckler/Session.dart';
+import 'package:chuckler/state/session_service.dart';
+import 'package:chuckler/state/prompt_service.dart';
+import 'package:chuckler/state/feed_service.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
@@ -75,8 +77,9 @@ class FeedPageContent extends StatelessWidget {
   Future<void> getNextTwoPosts(context) async {
     FirebaseFirestore firestore =
         Provider.of<FirebaseFirestore>(context, listen: false);
-    //Access UserService
-    UserService userSession = Provider.of<UserService>(context, listen: false);
+    //Access the prompt and feed services
+    PromptService promptService = Provider.of<PromptService>(context, listen: false);
+    FeedService feedService = Provider.of<FeedService>(context, listen: false);
     IsarService isarService = Provider.of<IsarService>(context, listen: false);
     List<DbPost> posts = await isarService.getTwoUnseenPosts();
 
@@ -84,12 +87,12 @@ class FeedPageContent extends StatelessWidget {
       print("Getting posts from firebase ");
 
       //add to the session
-      var getRand = userSession.prompts!.length;
+      var getRand = promptService.prompts!.length;
       Random r = Random();
       getRand = r.nextInt(getRand);
       var i = 0;
       List<DbPost> postsFromDb = List<DbPost>.empty(growable: true);
-      for (DbPrompt p in userSession.prompts!) {
+      for (DbPrompt p in promptService.prompts!) {
         if (i == getRand) {
           postsFromDb = await getPosts(firestore, p.promptId!, p.promptDateId!);
           await isarService.addPostsToDB(postsFromDb);
@@ -100,8 +103,8 @@ class FeedPageContent extends StatelessWidget {
         i++;
       }
     }
-    userSession.setCurrentFeedPromptId(posts.first.promptId!);
-    userSession.setCurrentPosts(posts);
+    feedService.setCurrentFeedPromptId(posts.first.promptId!);
+    feedService.setCurrentPosts(posts);
   }
 
   /*Get the user information for the modal*/
@@ -109,17 +112,17 @@ class FeedPageContent extends StatelessWidget {
     FirebaseFirestore firestore =
         Provider.of<FirebaseFirestore>(context, listen: false);
     IsarService isarService = Provider.of<IsarService>(context, listen: false);
-    UserService userSession = Provider.of<UserService>(context, listen: false);
+    SessionService sessionService = Provider.of<SessionService>(context, listen: false);
     DbUser? user = await isarService.getUserFromDb(uid);
     user ??= await getAUser(firestore, uid);
     if (user != null) {
-      if (userSession.loggedInUser!.friends.isNotEmpty) {
-        if (userSession.loggedInUser!.friends.contains(user.uid!)) {
+      if (sessionService.loggedInUser!.friends.isNotEmpty) {
+        if (sessionService.loggedInUser!.friends.contains(user.uid!)) {
           user.friend = true;
         }
       }
-      if (userSession.loggedInUser!.pendingFriends.isNotEmpty) {
-        if (userSession.loggedInUser!.pendingFriends.contains(user.uid!)) {
+      if (sessionService.loggedInUser!.pendingFriends.isNotEmpty) {
+        if (sessionService.loggedInUser!.pendingFriends.contains(user.uid!)) {
           user.pendingFriend = true;
         }
       }
@@ -132,8 +135,8 @@ class FeedPageContent extends StatelessWidget {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
-    UserService userSession = Provider.of<UserService>(context, listen: true);
-    print(userSession.currentPosts!.length);
+    FeedService feedService = Provider.of<FeedService>(context, listen: true);
+    print(feedService.currentPosts!.length);
     print("Rebuilding");
     return Container(
       width: screenWidth/1.1,

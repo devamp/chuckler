@@ -1,5 +1,5 @@
 import 'package:chuckler/CustomReusableWidgets/profile_photo.dart';
-import 'package:chuckler/Session.dart';
+import 'package:chuckler/state/prompt_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -48,7 +48,7 @@ class _CreatePageLoadingBarState extends State<CreatePageLoadingBar>
 
   @override
   Widget build(BuildContext context) {
-    UserService userSession = Provider.of<UserService>(context, listen: false);
+    PromptService promptService = Provider.of<PromptService>(context, listen: false);
     double screenHeight = MediaQuery.of(context).size.height;
     return Row(mainAxisAlignment: MainAxisAlignment.center, children: [
       Expanded(
@@ -71,7 +71,7 @@ class _CreatePageLoadingBarState extends State<CreatePageLoadingBar>
               //TODO add friend image
               child: Row(children: [
                 widget.friend != null ? ProfilePhoto(username: "Text", img: "", radius: 15): Container(),
-                Text(" ${widget.friend == null ? "         " : " + "} ${userSession.prompts![widget.pVal].responses} Answered",
+                Text(" ${widget.friend == null ? "         " : " + "} ${promptService.prompts![widget.pVal].responses} Answered",
                     style: TextStyle(
                         color: Colors.white,
                         fontFamily: 'OpenSans',

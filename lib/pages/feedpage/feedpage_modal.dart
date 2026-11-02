@@ -9,7 +9,7 @@ import 'package:provider/provider.dart';
 import 'package:chuckler/database/models.dart';
 import 'package:chuckler/database/isarDB.dart';
 
-import '../../Session.dart';
+import '../../state/session_service.dart';
 
 /// The following is the code for the LONG tap modal
 
@@ -28,7 +28,7 @@ class CommentModal extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    UserService userSession = Provider.of<UserService>(context, listen: false);
+    SessionService sessionService = Provider.of<SessionService>(context, listen: false);
     FirebaseFirestore firebase =
         Provider.of<FirebaseFirestore>(context, listen: false);
     IsarService isar = Provider.of<IsarService>(context, listen: true);
@@ -39,7 +39,7 @@ class CommentModal extends StatelessWidget {
       friendButton = 2;
     }
     else if (modalUser!.pendingFriend ||
-        modalUser!.pendingFriends.contains(userSession.loggedInUser!.uid)) {
+        modalUser!.pendingFriends.contains(sessionService.loggedInUser!.uid)) {
       friendButton = 1;
     }
 
@@ -129,34 +129,34 @@ class CommentModal extends StatelessWidget {
                                       bgColors: const [Colors.transparent, Colors.amber, Colors.amber],
                                       iconColors: const [Colors.grey, Colors.grey, Colors.green],
                                       pressed: () {
-                                        if (userSession.loggedInUser!.pendingFriends
+                                        if (sessionService.loggedInUser!.pendingFriends
                                             .contains(modalUser!.uid!)) {
                                           friend(
                                               firebase,
-                                              userSession.loggedInUser!.uid!,
+                                              sessionService.loggedInUser!.uid!,
                                               modalUser!.uid!,
-                                              userSession.loggedInUser!.username!,
+                                              sessionService.loggedInUser!.username!,
                                               modalUser!.username!,
-                                              userSession.loggedInUser!.friends,
+                                              sessionService.loggedInUser!.friends,
                                               true);
                                          modalUser!.friend = true;
                                           isar.addUserToDb(modalUser!);
-                                          userSession.loggedInUser!.pendingFriends.remove(modalUser!.uid);
-                                          userSession.setUserFriends(userSession.loggedInUser!.numFriends! + 1);
+                                          sessionService.loggedInUser!.pendingFriends.remove(modalUser!.uid);
+                                          sessionService.setUserFriends(sessionService.loggedInUser!.numFriends! + 1);
                                           return 2;
                                         } else if (friendButton != 2 &&
                                             !modalUser!.pendingFriends
-                                                .contains(userSession.loggedInUser!.uid!)) {
+                                                .contains(sessionService.loggedInUser!.uid!)) {
                                           friend(
                                               firebase,
-                                              userSession.loggedInUser!.uid!,
+                                              sessionService.loggedInUser!.uid!,
                                               modalUser!.uid!,
-                                              userSession.loggedInUser!.username!,
+                                              sessionService.loggedInUser!.username!,
                                               modalUser!.username!,
-                                              userSession.loggedInUser!.friends,
+                                              sessionService.loggedInUser!.friends,
                                               false);
                                           modalUser!.pendingFriends = [
-                                            userSession.loggedInUser!.uid!
+                                            sessionService.loggedInUser!.uid!
                                           ];
                                           isar.addUserToDb(modalUser!);
                                           return 1;

@@ -4,7 +4,7 @@ import 'package:flutter_profile_picture/flutter_profile_picture.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:provider/provider.dart';
 
-import '../../Session.dart';
+import '../../state/session_service.dart';
 
 class AccountPosts extends StatelessWidget {
   final List<DbPost> posts;
@@ -13,7 +13,7 @@ class AccountPosts extends StatelessWidget {
 
   @override
   Widget build(context) {
-    UserService userService = Provider.of<UserService>(context, listen: true);
+    SessionService sessionService = Provider.of<SessionService>(context, listen: true);
     double screenHeight = MediaQuery.of(context).size.height;
 
     print('rebuilding');
@@ -48,12 +48,12 @@ class AccountPosts extends StatelessWidget {
                         Row(
                           children: [
                             ProfilePicture(
-                                name: userService.loggedInUser!.username!,
+                                name: sessionService.loggedInUser!.username!,
                                 radius: 20,
                                 fontsize: 20),
                             const SizedBox(width: 10),
                             Text(
-                              userService.loggedInUser!.username!,
+                              sessionService.loggedInUser!.username!,
                               style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w800,

@@ -4,7 +4,7 @@ import 'package:chuckler/pages/accountpage/settings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_profile_picture/flutter_profile_picture.dart';
 import 'package:provider/provider.dart';
-import '../../Session.dart';
+import '../../state/session_service.dart';
 import '../../Theme/theme.dart';
 import '../../database/models.dart';
 import 'account_posts.dart';
@@ -67,7 +67,7 @@ class _AccountState extends State<Account> {
 
   Widget accountHeader(BuildContext context, Function setCurrentPageIndex,
       double screenWidth, double screenHeight) {
-    UserService userService = Provider.of<UserService>(context, listen: true);
+    SessionService sessionService = Provider.of<SessionService>(context, listen: true);
 
     return Container(
       width: screenWidth,
@@ -86,12 +86,12 @@ class _AccountState extends State<Account> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             ProfilePicture(
-                name: userService.loggedInUser!.username!,
+                name: sessionService.loggedInUser!.username!,
                 radius: 55,
                 fontsize: 20),
             const SizedBox(height: 12),
             Text(
-              userService.loggedInUser!.username!,
+              sessionService.loggedInUser!.username!,
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22),
             ),
             const SizedBox(height: 15),

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../Session.dart';
 import '../../Theme/theme.dart';
 import 'leaderboard_categories.dart';
 

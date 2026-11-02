@@ -1,5 +1,5 @@
 import 'dart:math';
-import 'package:chuckler/Session.dart';
+import 'package:chuckler/state/session_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../CustomReusableWidgets/profile_photo.dart';
@@ -236,7 +236,7 @@ Widget buildHallOfFameLeaderboard(BuildContext context) {
 }
 
 Widget buildList(List<Leader> entries, BuildContext context) {
-  UserService userSession = Provider.of<UserService>(context);
+  SessionService sessionService = Provider.of<SessionService>(context);
 
   return ListView.builder(
     padding: const EdgeInsets.all(10),
@@ -254,7 +254,7 @@ Widget buildList(List<Leader> entries, BuildContext context) {
                 context,
                 MaterialPageRoute(
                   builder: (context) => PublicPage(
-                      username: userSession.loggedInUser?.username ??
+                      username: sessionService.loggedInUser?.username ??
                           'Undefined User'),
                 ),
               )
@@ -273,7 +273,7 @@ Widget buildList(List<Leader> entries, BuildContext context) {
                   ),
                   ProfilePhoto(
                     username:
-                        userSession.loggedInUser?.username ?? 'Undefined User',
+                        sessionService.loggedInUser?.username ?? 'Undefined User',
                     img: '',
                     radius: 22.0,
                   ),
@@ -283,7 +283,7 @@ Widget buildList(List<Leader> entries, BuildContext context) {
                   SizedBox(
                     width: 150,
                     child: Text(
-                      userSession.loggedInUser?.username ?? 'Undefined User',
+                      sessionService.loggedInUser?.username ?? 'Undefined User',
                       style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           overflow: TextOverflow.ellipsis,

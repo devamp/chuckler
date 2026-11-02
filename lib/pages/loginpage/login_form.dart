@@ -8,7 +8,9 @@ import 'package:provider/provider.dart';
 import '../../data/prompts.dart';
 import '../../data/users.dart';
 import '../../data/posts.dart';
-import '../../Session.dart';
+import '../../state/session_service.dart';
+import '../../state/prompt_service.dart';
+import '../../state/feed_service.dart';
 import '../../database/isarDB.dart';
 import '../../database/models.dart';
 import '../../db.dart';
@@ -46,8 +48,7 @@ class _LoginFormState extends State<LoginForm> {
   Future<void> getInitialPosts(context, FirebaseFirestore firestore,
       String prmtId, String prmtDateId) async {
     //instance of usersession
-    final UserService userSession =
-        Provider.of<UserService>(context, listen: false);
+    final FeedService feedService = Provider.of<FeedService>(context, listen: false);
     final isarService = Provider.of<IsarService>(context, listen: false);
     //check if posts are in local database
     List<DbPost> posts = await isarService.getTwoUnseenPosts();
@@ -58,9 +59,9 @@ class _LoginFormState extends State<LoginForm> {
       posts = await getPosts(firestore, prmtId, prmtDateId);
 
       await isarService.addPostsToDB(posts);
-      userSession.setCurrentPosts(await isarService.getTwoUnseenPosts());
+      feedService.setCurrentPosts(await isarService.getTwoUnseenPosts());
     } else {
-      userSession.setCurrentPosts(posts);
+      feedService.setCurrentPosts(posts);
     }
   }
 
@@ -68,8 +69,9 @@ class _LoginFormState extends State<LoginForm> {
     FirebaseFirestore firestore =
         Provider.of<FirebaseFirestore>(context, listen: false);
     print(userId + "This is the userID");
-    final UserService userSession =
-        Provider.of<UserService>(context, listen: false);
+    final SessionService sessionService = Provider.of<SessionService>(context, listen: false);
+    final PromptService promptService = Provider.of<PromptService>(context, listen: false);
+    final FeedService feedService = Provider.of<FeedService>(context, listen: false);
     final isarService = Provider.of<IsarService>(context, listen: false);
 
     try {
@@ -96,24 +98,24 @@ class _LoginFormState extends State<LoginForm> {
       var i = 0;
       for (DbPrompt p in promptsToAdd) {
         if (i == getRand) {
-          userSession.setCurrentFeedPromptId(p.promptId!);
+          feedService.setCurrentFeedPromptId(p.promptId!);
           await getInitialPosts(
               context, firestore, p.promptId!, p.promptDateId!);
         }
-        userSession.addPrompt(p);
+        promptService.addPrompt(p);
         ///TODO get posts from DB first...Not good for testing
-        userSession.addPostForPrompt(await getUserPostForPrompt(firestore, userId, p.promptDateId!, p.promptId!));
+        promptService.addPostForPrompt(await getUserPostForPrompt(firestore, userId, p.promptDateId!, p.promptId!));
         i++;
       }
 
       DbUser? theUser = await getLoggedInUserInfo(firestore, userId);
       if (theUser != null) {
-        userSession.setLoggedInUser(theUser);
+        sessionService.setLoggedInUser(theUser);
       }
       String? lTime = await getCachedLoginTime();
-      userSession.setLoginTime(lTime);
-      if (!userSession.firstLogin) {
-        print("last login ${userSession.logTime!}");
+      sessionService.setLoginTime(lTime);
+      if (!sessionService.firstLogin) {
+        print("last login ${sessionService.logTime!}");
       }
       cacheLoginTime();
     } catch (e) {

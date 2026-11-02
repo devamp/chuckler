@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:provider/provider.dart';
-import 'package:chuckler/Session.dart';
+import 'package:chuckler/state/prompt_service.dart';
+import 'package:chuckler/state/feed_service.dart';
 
 import '../../database/models.dart';
 
@@ -10,19 +11,20 @@ class FeedPagePromptArea extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    UserService userSession = Provider.of<UserService>(context, listen: true);
+    PromptService promptService = Provider.of<PromptService>(context, listen: true);
+    FeedService feedService = Provider.of<FeedService>(context, listen: true);
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
     late DbPrompt thePrompt;
-    for(DbPrompt p in userSession.prompts!){
-      if(p.promptId == userSession.currentFeedPromptId){
+    for(DbPrompt p in promptService.prompts!){
+      if(p.promptId == feedService.currentFeedPromptId){
         thePrompt = p;
       }
     }
     return InkWell(
       onTap: (){
-        userSession.clearViewingColor();
-        userSession.clearviewingPost();
+        feedService.clearViewingColor();
+        feedService.clearviewingPost();
       },
         child: Column(
       children: [
@@ -55,9 +57,9 @@ class FeedPagePromptArea extends StatelessWidget {
                                       style:
                                       const TextStyle(color: Colors.white)),
                                   TextSpan(
-                                      text: userSession.viewingPost,
+                                      text: feedService.viewingPost,
                                       style:
-                                      TextStyle(color: userSession.viewingColor)),
+                                      TextStyle(color: feedService.viewingColor)),
                                   TextSpan(
                                       text: thePrompt.after,
                                       style:

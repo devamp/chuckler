@@ -10,7 +10,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:chuckler/pages/loginpage/login_page.dart';
 import 'package:chuckler/PageTransitioner.dart';
 import 'package:flutter/widgets.dart';
-import '../../Session.dart';
+import '../../state/session_service.dart';
+import '../../state/prompt_service.dart';
 import 'package:provider/provider.dart';
 import '../../database/isarDB.dart';
 import '../../database/models.dart';
@@ -50,13 +51,14 @@ class _CreatePageContentState extends State<CreatePageContent>
    */
   Future<void> postData() async {
     //check if user can post
-    UserService userSession = Provider.of<UserService>(context, listen: false);
+    SessionService sessionService = Provider.of<SessionService>(context, listen: false);
+    PromptService promptService = Provider.of<PromptService>(context, listen: false);
     //no posting until today's prompt is published
-    if (isAwaitingPrompt(userSession.prompts![promptVal])) {
+    if (isAwaitingPrompt(promptService.prompts![promptVal])) {
       return;
     }
     if (canPost[promptVal] &&
-        userSession.userPostsForPrompts[promptVal] == null) {
+        promptService.userPostsForPrompts[promptVal] == null) {
       canPost[promptVal] = false;
       //check if user has already posted
       FirebaseFirestore firebase =
@@ -66,15 +68,15 @@ class _CreatePageContentState extends State<CreatePageContent>
         //Retrieve newly created post
         DbPost justPosted = await createPost(
             firebase,
-            userSession.loggedInUser!,
-            userSession.prompts![promptVal],
+            sessionService.loggedInUser!,
+            promptService.prompts![promptVal],
             _controller.text);
         //Add post to local DB
         IsarService isar = Provider.of<IsarService>(context, listen: false);
         //Incrament user posts stat
         isar.addOnePostToDB(justPosted);
         incrementNumPosts(firebase, userId);
-        userSession.userPostsForPrompts[promptVal] = justPosted;
+        promptService.userPostsForPrompts[promptVal] = justPosted;
       } catch (error) {
         print("Error: $error");
       }
@@ -101,9 +103,9 @@ class _CreatePageContentState extends State<CreatePageContent>
   @override
   void initState() {
     super.initState();
-    UserService userSession = Provider.of<UserService>(context, listen: false);
-    if (userSession.userPostsForPrompts.first != null) {
-      _controller.text = userSession.userPostsForPrompts.first!.answer!;
+    PromptService promptService = Provider.of<PromptService>(context, listen: false);
+    if (promptService.userPostsForPrompts.first != null) {
+      _controller.text = promptService.userPostsForPrompts.first!.answer!;
     }
     //Set up text box
     focusNode.addListener(() {
@@ -137,22 +139,23 @@ class _CreatePageContentState extends State<CreatePageContent>
   @override
   Widget build(BuildContext context) {
     //Set variables
-    UserService userSession = Provider.of<UserService>(context, listen: false);
-    userName = userSession.loggedInUser!.username!;
+    SessionService sessionService = Provider.of<SessionService>(context, listen: false);
+    PromptService promptService = Provider.of<PromptService>(context, listen: false);
+    userName = sessionService.loggedInUser!.username!;
     double screenWidth = MediaQuery.sizeOf(context).width;
     double screenHeight = MediaQuery.sizeOf(context).height;
-    List<DbPrompt> prompts = userSession.prompts!;
+    List<DbPrompt> prompts = promptService.prompts!;
     promptId = prompts[promptVal].promptId!;
     promtDateId = prompts[promptVal].promptDateId!;
-    for (int i = 0; i < userSession.prompts!.length; i++) {
+    for (int i = 0; i < promptService.prompts!.length; i++) {
       canPost.add(true);
-      if (userSession.userPostsForPrompts[i] == null) {
+      if (promptService.userPostsForPrompts[i] == null) {
         textControllerStates.add(CreatePageTextPrompt);
       } else {
         if (textControllerStates.length >= prompts.length) {
-          textControllerStates[i] = userSession.userPostsForPrompts[i]!.answer!;
+          textControllerStates[i] = promptService.userPostsForPrompts[i]!.answer!;
         } else {
-          textControllerStates.add(userSession.userPostsForPrompts[i]!.answer!);
+          textControllerStates.add(promptService.userPostsForPrompts[i]!.answer!);
         }
       }
     }

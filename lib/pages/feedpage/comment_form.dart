@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../Session.dart';
+import '../../state/session_service.dart';
 import 'package:chuckler/database/models.dart';
 
 class CommentForm extends StatefulWidget {
@@ -60,7 +60,7 @@ class _CommentFormState extends State<CommentForm> {
 
   @override
   Widget build(BuildContext context) {
-    UserService userService = Provider.of<UserService>(context, listen: false);
+    SessionService sessionService = Provider.of<SessionService>(context, listen: false);
     double screenWidth = MediaQuery.sizeOf(context).width;
     return Column(
       mainAxisAlignment: MainAxisAlignment.start,
@@ -126,11 +126,11 @@ class _CommentFormState extends State<CommentForm> {
                                     listen: false);
                             /// FIX
                            /// addCommentToPost(firestore, widget.cfData.postId!,
-                               /// userService.loggedInUser!.username!, myController.text);
+                               /// sessionService.loggedInUser!.username!, myController.text);
                             comments.add(
                                 DbComment("YOUR USERNAME", myController.text));
                             myController.text = "";
-                            print(userService.loggedInUser!.username!);
+                            print(sessionService.loggedInUser!.username!);
                           },
                         )
                       : null,
