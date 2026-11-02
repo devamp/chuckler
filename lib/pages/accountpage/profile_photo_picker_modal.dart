@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:chuckler/Session.dart';
-import 'package:chuckler/DatabaseQueries.dart';
+import 'package:chuckler/data/users.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../CustomReusableWidgets/profile_photo.dart';
 class ProfilePhotoPickerModal extends StatelessWidget {

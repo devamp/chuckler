@@ -1,7 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../DatabaseQueries.dart';
 import '../../Session.dart';
 import 'package:chuckler/database/models.dart';
 

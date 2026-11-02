@@ -5,7 +5,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../DatabaseQueries.dart';
+import '../../data/prompts.dart';
+import '../../data/users.dart';
+import '../../data/posts.dart';
 import '../../Session.dart';
 import '../../database/isarDB.dart';
 import '../../database/models.dart';

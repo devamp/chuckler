@@ -1,5 +1,7 @@
 // ignore_for_file: unused_local_variable
-import 'package:chuckler/DatabaseQueries.dart';
+import 'package:chuckler/data/posts.dart';
+import 'package:chuckler/data/users.dart';
+import 'package:chuckler/data/prompts.dart';
 import 'package:chuckler/pages/createpage/create_page_loadingbar.dart';
 import 'package:flutter/material.dart';
 import 'package:auto_size_text/auto_size_text.dart';
