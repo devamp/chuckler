@@ -112,7 +112,7 @@ void main() {
     expect(find.byTooltip('Pick this answer as the winner'), findsNothing);
   });
 
-  testWidgets('swiping down moves on, and back returns to a final vote',
+  testWidgets('swiping up moves on, swiping down returns to a final vote',
       (tester) async {
     await pumpVotePage(tester);
     await tester.drag(
@@ -120,49 +120,60 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.fling(find.textContaining('your pilot say', findRichText: true),
-        const Offset(0, 300), 1000);
+        const Offset(0, -300), 1000);
     await tester.pumpAndSettle();
     expect(answer('Hold my coffee'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Previous matchup'));
+    await tester.fling(answer('Hold my coffee'), const Offset(0, 300), 1000);
     await tester.pumpAndSettle();
     expect(answer('Anyone know which button is autopilot?'), findsOneWidget);
     expect(find.text('Your pick'), findsOneWidget);
   });
 
-  testWidgets('swiping up never moves on', (tester) async {
+  testWidgets('the back button also returns to the previous matchup',
+      (tester) async {
     await pumpVotePage(tester);
-    final card = answer('Anyone know which button is autopilot?');
-
-    await tester.fling(card, const Offset(0, -300), 1500);
-    await tester.pumpAndSettle();
-    await tester.timedDrag(
-        card, const Offset(0, -200), const Duration(milliseconds: 800));
+    await tester.tap(find.text('Skip'));
     await tester.pumpAndSettle();
 
-    // an upward swipe that ends with a quick downward twitch
-    final g = await tester.startGesture(tester.getCenter(card));
-    for (var i = 1; i <= 10; i++) {
-      await g.moveBy(const Offset(0, -20),
-          timeStamp: Duration(milliseconds: 30 * i));
-    }
-    await g.moveBy(const Offset(0, 30),
-        timeStamp: const Duration(milliseconds: 310));
-    await g.up(timeStamp: const Duration(milliseconds: 312));
+    await tester.tap(find.byTooltip('Previous matchup'));
     await tester.pumpAndSettle();
 
     expect(voting.index, 0);
-    expect(card, findsOneWidget);
   });
 
-  testWidgets('a slow downward drag also moves on', (tester) async {
+  testWidgets('slow drags work in both directions', (tester) async {
     await pumpVotePage(tester);
 
     await tester.timedDrag(answer('Anyone know which button is autopilot?'),
-        const Offset(0, 200), const Duration(milliseconds: 800));
+        const Offset(0, -200), const Duration(milliseconds: 800));
+    await tester.pumpAndSettle();
+    expect(voting.index, 1);
+
+    await tester.timedDrag(answer('Hold my coffee'), const Offset(0, 200),
+        const Duration(milliseconds: 800));
+    await tester.pumpAndSettle();
+    expect(voting.index, 0);
+  });
+
+  testWidgets('swiping down on the first matchup stays put', (tester) async {
+    await pumpVotePage(tester);
+
+    await tester.fling(answer('Anyone know which button is autopilot?'),
+        const Offset(0, 300), 1000);
     await tester.pumpAndSettle();
 
-    expect(voting.index, 1);
+    expect(voting.index, 0);
+  });
+
+  testWidgets('a short vertical drag does nothing', (tester) async {
+    await pumpVotePage(tester);
+
+    await tester.timedDrag(answer('Anyone know which button is autopilot?'),
+        const Offset(0, -40), const Duration(milliseconds: 800));
+    await tester.pumpAndSettle();
+
+    expect(voting.index, 0);
   });
 
   testWidgets('buttons vote and skip like the gestures', (tester) async {
@@ -192,6 +203,12 @@ void main() {
 
     expect(find.textContaining("You're all caught up"), findsOneWidget);
     expect(find.text('Skip'), findsNothing);
+
+    // swiping down from the end returns to the last matchup
+    await tester.fling(find.textContaining("You're all caught up"),
+        const Offset(0, 300), 1000);
+    await tester.pumpAndSettle();
+    expect(voting.index, 4);
   });
 
   testWidgets('the tutorial shows once and is dismissed with Got it',

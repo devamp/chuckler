@@ -11,7 +11,7 @@ import 'feedpage_vote_card.dart';
 const String voteTutorialSeenKey = 'voteTutorialSeen';
 
 /// Swipe voting: two stacked answers to the same prompt. Swipe right on the
-/// winner, left to downvote, down to skip or move on.
+/// winner, left to downvote, up to skip or move on, down to go back.
 class VotePage extends StatefulWidget {
   const VotePage({super.key});
 
@@ -21,7 +21,7 @@ class VotePage extends StatefulWidget {
 
 class _VotePageState extends State<VotePage> {
   final List<Color> answerColors = [Colors.greenAccent, Colors.purpleAccent];
-  double _dragDown = 0;
+  double _dragDy = 0;
   bool _showTutorial = false;
 
   @override
@@ -121,26 +121,25 @@ class _VotePageState extends State<VotePage> {
               child: !votingService.loaded
                   ? const Center(
                       child: CircularProgressIndicator(color: Colors.amber))
-                  : m == null
-                      ? caughtUp()
-                      : GestureDetector(
-                          // swipe down anywhere on the matchup to move on
-                          onVerticalDragStart: (_) => _dragDown = 0,
-                          onVerticalDragUpdate: (d) =>
-                              _dragDown += d.delta.dy,
-                          onVerticalDragEnd: (d) {
-                            // only a net downward swipe moves on; upward
-                            // swipes never do, however fast they end
-                            double speed = d.velocity.pixelsPerSecond.dy;
-                            if (_dragDown > 80 ||
-                                (_dragDown > 20 && speed > 600)) {
-                              debugPrint(
-                                  'Vote swipe down: moved $_dragDown px, speed $speed px/s');
-                              votingService.next();
-                            }
-                          },
-                          child: matchupView(votingService, m),
-                        ),
+                  : GestureDetector(
+                      // like a reels feed: swipe up for the next matchup,
+                      // down for the previous one
+                      behavior: HitTestBehavior.opaque,
+                      onVerticalDragStart: (_) => _dragDy = 0,
+                      onVerticalDragUpdate: (d) => _dragDy += d.delta.dy,
+                      onVerticalDragEnd: (d) {
+                        double speed = d.velocity.pixelsPerSecond.dy;
+                        if (_dragDy < -80 || (_dragDy < -20 && speed < -600)) {
+                          votingService.next();
+                        } else if (_dragDy > 80 ||
+                            (_dragDy > 20 && speed > 600)) {
+                          votingService.back();
+                        }
+                      },
+                      child: m == null
+                          ? caughtUp()
+                          : matchupView(votingService, m),
+                    ),
             ),
             controls(votingService, m),
           ],
@@ -296,7 +295,9 @@ class _VotePageState extends State<VotePage> {
                 'Swipe right on the winner'),
             tutorialRow(
                 Icons.swipe_left, Colors.redAccent, 'Swipe left to downvote'),
-            tutorialRow(Icons.swipe_down, Colors.white, 'Swipe down to skip'),
+            tutorialRow(Icons.swipe_up, Colors.white, 'Swipe up to skip'),
+            tutorialRow(Icons.swipe_down, Colors.white,
+                'Swipe down to see your last one'),
             const SizedBox(height: 30),
             ElevatedButton(
               onPressed: dismissTutorial,

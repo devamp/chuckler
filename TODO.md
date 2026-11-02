@@ -35,14 +35,14 @@ A matchup shows two answer cards stacked vertically.
 |---|---|
 | Swipe **right** on a card | That answer wins |
 | Swipe **left** on a card | Downvote that answer |
-| Swipe **down** | Skip (before voting) / next matchup (after voting) |
-| **Back** button | Previous matchup |
+| Swipe **up** | Skip (before voting) / next matchup (after voting), like a reels feed |
+| Swipe **down** or **back** button | Previous matchup |
 
 - **One action per matchup:** a win or a downvote, never both. A downvote on one answer does not count as a win for the other.
 - **Votes are final.** Back shows a previous matchup's results and your vote, but it cannot change the vote. A skipped matchup has no vote yet, so back can still vote on it.
 - **After voting, the results appear immediately:** each card's pick percentage ("62% picked this", counting only right swipes) and the matchup's comments.
-- **Comments are per matchup** in voting, and only visible after you vote. A preview appears automatically with the results; tapping the results opens the full comment section. Before voting, swipe up does nothing.
-- **Teaching the gestures:** a one-time overlay the first time someone opens Home ("Swipe right on the winner, left to downvote, down to skip"), plus matching buttons under the cards for discoverability and VoiceOver.
+- **Comments are per matchup** in voting, and only visible after you vote. A preview appears automatically with the results; tapping the results opens the full comment section.
+- **Teaching the gestures:** a one-time overlay the first time someone opens Home ("Swipe right on the winner, left to downvote, up to skip, down to go back"), plus matching buttons under the cards for discoverability and VoiceOver.
 - Accept swipes only when they start on the cards, away from the screen edges, so they don't collide with the iOS home and Notification Center gestures.
 - Each card shows whether the answer is from a friend, local or global. Not filtered by default; the user can filter to specific types. Friend and Local are relative to the viewer, so the tag is worked out per viewer, not stored on the post.
 
