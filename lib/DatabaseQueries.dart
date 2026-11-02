@@ -70,6 +70,21 @@ Future<DbPost> createPost(
 ///
 ///
 
+/// promptId and promptDateId of the placeholder prompt shown while today's
+/// prompt has not been published yet
+const String awaitingPromptId = 'awaiting-daily-prompt';
+
+/// Placeholder returned by getDailyPrompts when there is no prompt for today.
+/// Its date is left null so the Isar cache never serves it on a later login.
+DbPrompt awaitingPrompt() {
+  return DbPrompt('The daily prompt is still', 'in the oven. Check back soon!',
+      awaitingPromptId, awaitingPromptId, null, null);
+}
+
+bool isAwaitingPrompt(DbPrompt prompt) {
+  return prompt.promptId == awaitingPromptId;
+}
+
 /**
     @author - Caden Deutscher
     @params - firestore - firestore instance to query data from
@@ -98,12 +113,12 @@ Future<List<DbPrompt>> getDailyPrompts(FirebaseFirestore firestore) async {
       .where('date', isGreaterThanOrEqualTo: startDate)
       .where('date', isLessThan: endDate)
       .get();
-  String pid = querySnapshot.docs.first.id;
-  print("this is the pid$pid");
 
   if (querySnapshot.docs.isEmpty) {
     print("NO DOCS FOUND FOR TODAY $startDate");
   } else {
+    String pid = querySnapshot.docs.first.id;
+    print("this is the pid$pid");
     CollectionReference cr =
         querySnapshot.docs.first.reference.collection("Prompts");
     final gs = await cr.get();
@@ -125,6 +140,9 @@ Future<List<DbPrompt>> getDailyPrompts(FirebaseFirestore firestore) async {
       }
 
     }
+  }
+  if (prompts.isEmpty) {
+    prompts.add(awaitingPrompt());
   }
   return prompts;
 }

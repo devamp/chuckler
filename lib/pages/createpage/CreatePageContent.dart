@@ -49,6 +49,10 @@ class _CreatePageContentState extends State<CreatePageContent>
   Future<void> postData() async {
     //check if user can post
     UserService userSession = Provider.of<UserService>(context, listen: false);
+    //no posting until today's prompt is published
+    if (isAwaitingPrompt(userSession.prompts![promptVal])) {
+      return;
+    }
     if (canPost[promptVal] &&
         userSession.userPostsForPrompts[promptVal] == null) {
       canPost[promptVal] = false;
