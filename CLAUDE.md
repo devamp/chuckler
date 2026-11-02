@@ -85,7 +85,7 @@ Matchups exist only because of these triggers. The app itself does not read `Mat
 
 ## Known follow-ups
 
-Planned features (Create-tab prompt swiping, swipe-based Home voting) are in `TODO.md`.
+Planned features and design decisions (prompt types, Create-tab swiping, Home swipe voting, past responses feed, prompt lifetimes) are in `TODO.md`.
 
 - Signup calls `httpsCallable('checkUsername')`, which is not defined in `functions/index.js`.
 - Cloud Functions run on Node 18, which Google has retired. Move to Node 20+ before any deploy.
