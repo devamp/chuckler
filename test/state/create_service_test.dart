@@ -77,6 +77,18 @@ void main() {
     expect(s.statsFor(1), isNotNull);
   });
 
+  test('likes count the user once, however often they toggle', () async {
+    s.setPrompts([aPrompt('a')], [null]);
+    expect(s.likesFor(0), 0);
+    await s.loadStats(FakeFirebaseFirestore(), 'me');
+    final base = s.likesFor(0);
+
+    expect(s.toggleLike(0), isTrue);
+    expect(s.likesFor(0), base + 1);
+    expect(s.toggleLike(0), isFalse);
+    expect(s.likesFor(0), base);
+  });
+
   test('logout clears everything', () async {
     s.setPrompts([awaitingPrompt()], [null], includeSamples: true);
     s.setDraft(1, 'x');

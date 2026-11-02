@@ -1,12 +1,23 @@
 import 'package:flutter/material.dart';
 import '../../data/prompt_stats.dart';
 
-/// Answers, votes and friends for a prompt, along the bottom of its card
+/// Answers, likes and friends for a prompt, along the bottom of its card
 class PromptStatsStrip extends StatelessWidget {
   /// null while loading
   final PromptStats? stats;
+  final int likes;
+  final bool liked;
+  final VoidCallback onLike;
+  final VoidCallback onFriends;
 
-  const PromptStatsStrip({super.key, required this.stats});
+  const PromptStatsStrip({
+    super.key,
+    required this.stats,
+    required this.likes,
+    required this.liked,
+    required this.onLike,
+    required this.onFriends,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -23,34 +34,55 @@ class PromptStatsStrip extends StatelessWidget {
                   value: s == null ? '–' : compactCount(s.answers),
                   label: 'answers')),
           Expanded(
-              child: StatTile(
-                  value: s == null ? '–' : compactCount(s.votes),
-                  label: 'votes')),
+            child: Tooltip(
+              message: liked ? 'Unlike this prompt' : 'Like this prompt',
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: s == null ? null : onLike,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(liked ? Icons.favorite : Icons.favorite_border,
+                            color: Colors.pinkAccent, size: 20),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(s == null ? '–' : compactCount(likes),
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontFamily: 'OpenSans',
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 20)),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Text('likes',
+                        style: TextStyle(
+                            color: Colors.white54,
+                            fontFamily: 'OpenSans',
+                            fontSize: 12)),
+                  ],
+                ),
+              ),
+            ),
+          ),
           Expanded(
             flex: 2,
-            child: Tooltip(
-              message: friends.isEmpty
-                  ? 'No friends have answered yet'
-                  : '${friends.join(', ')} answered',
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: friends.isEmpty ? null : onFriends,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   for (int i = 0; i < friends.length && i < 3; i++)
                     Align(
                       widthFactor: 0.7,
-                      child: CircleAvatar(
-                        radius: 13,
-                        backgroundColor: Colors.black87,
-                        child: CircleAvatar(
-                          radius: 11,
-                          backgroundColor: _friendColors[i],
-                          child: Text(friends[i][0].toUpperCase(),
-                              style: const TextStyle(
-                                  color: Colors.black,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold)),
-                        ),
-                      ),
+                      child: FriendAvatar(username: friends[i], index: i),
                     ),
                   const SizedBox(width: 8),
                   Flexible(
@@ -66,6 +98,9 @@ class PromptStatsStrip extends StatelessWidget {
                           fontSize: 13),
                     ),
                   ),
+                  if (friends.isNotEmpty)
+                    const Icon(Icons.chevron_right,
+                        color: Colors.white54, size: 18),
                 ],
               ),
             ),
@@ -76,10 +111,88 @@ class PromptStatsStrip extends StatelessWidget {
   }
 }
 
+/// Initial in a colored circle, until friends have profile photos here
+class FriendAvatar extends StatelessWidget {
+  final String username;
+
+  /// picks the color
+  final int index;
+  final double radius;
+
+  const FriendAvatar(
+      {super.key, required this.username, required this.index, this.radius = 13});
+
+  @override
+  Widget build(BuildContext context) {
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: Colors.black87,
+      child: CircleAvatar(
+        radius: radius - 2,
+        backgroundColor: _friendColors[index % _friendColors.length],
+        child: Text(username.isEmpty ? '?' : username[0].toUpperCase(),
+            style: TextStyle(
+                color: Colors.black,
+                fontSize: radius - 1,
+                fontWeight: FontWeight.bold)),
+      ),
+    );
+  }
+}
+
+/// Everyone in the user's friends list who answered the prompt
+void showFriendsAnswered(BuildContext context, List<String> friends) {
+  // TODO(cloud): open the friend's profile on tap once profiles can be
+  // opened from here, and show photos (Users/{uid}.profileImage).
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: Colors.black87,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+    builder: (context) => ConstrainedBox(
+      constraints:
+          BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.6),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+            child: Text(
+              '${friends.length} '
+              '${friends.length == 1 ? 'FRIEND' : 'FRIENDS'} ANSWERED',
+              style: const TextStyle(
+                  color: Colors.amberAccent,
+                  fontFamily: 'NewAmsterdam',
+                  fontSize: 24),
+            ),
+          ),
+          Flexible(
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: friends.length,
+              itemBuilder: (context, i) => ListTile(
+                leading: FriendAvatar(username: friends[i], index: i, radius: 18),
+                title: Text(friends[i],
+                    style: const TextStyle(
+                        color: Colors.white, fontFamily: 'OpenSans')),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+        ],
+      ),
+    ),
+  );
+}
+
 const List<Color> _friendColors = [
   Colors.greenAccent,
   Colors.purpleAccent,
   Colors.lightBlueAccent,
+  Colors.orangeAccent,
+  Colors.pinkAccent,
 ];
 
 /// A number with a small label under it

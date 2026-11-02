@@ -55,4 +55,17 @@ void main() {
     expect(samplePromptStats(iceCream, fresh).mine!.matchups, 0);
     expect(samplePromptStats(iceCream, null).answers, 340);
   });
+
+  test('sample streak history ends in a streak of sampleStreak days', () {
+    final now = DateTime.utc(2026, 11, 2, 15);
+    final h = sampleStreakHistory(now, 'caden');
+    for (var d = 0; d < sampleStreak; d++) {
+      expect(h.answeredOn(now.subtract(Duration(days: d))), isTrue);
+    }
+    expect(h.answeredOn(now.subtract(const Duration(days: sampleStreak))),
+        isFalse);
+    expect(h.myPlace, 4);
+    expect(h.standings[h.myPlace - 1].username, 'caden');
+    expect(const StreakHistory().myPlace, 0);
+  });
 }

@@ -20,12 +20,16 @@ Later, if the app grows, Local and Global prompt slots could be sold to companie
 - The app remembers which prompts the user has answered, both on the phone and on the account, so answered prompts still show as answered after a reinstall or on another device.
 - The segment badge reflects the prompt's type (above).
 - Dismiss the keyboard when swiping, so horizontal drags in the text field don't fight the swipe.
-- **Stats on every prompt:** answers, votes and friends who answered on the card; once you answer, your answer's matchups, wins, win rate, downvotes, rank ("#12 of 340 · Top 4%") and wins per hour. An answer streak sits in the header.
+- **Stats on every prompt:** answers, likes and friends who answered on the card; once you answer, your answer's matchups, wins, win rate, downvotes, rank ("#12 of 340 · Top 4%") and wins per hour.
+- **Likes:** a heart with the prompt's like count. Tapping it likes or unlikes the prompt.
+- **Friends who answered:** tapping the avatars opens a list of every friend who answered.
+- **Streak:** the header chip opens a calendar: a flame on each day you answered, a grey box with a black X on each day you missed. Under it, the top 5 current streaks among your friends and your place.
 
 **Built so far (live prompts, sample stats):** `lib/pages/createpage/` is a `PageView` of prompt cards (`create_prompt_card.dart`) with page dots, a time-left label, the answer box (`create_answer_box.dart`) and the stats widgets (`create_stats.dart`). `CreateService` keeps drafts per prompt across swipes and tab switches. Posting to a live prompt works as before (Posts doc, Isar cache, post count). With no live prompt, debug builds add three sample prompts (one per segment, one already answered) whose answers stay on the phone.
 
 **Still to do:**
-- Cloud counters for the stats: see the `TODO(cloud)` notes in `lib/data/prompt_stats.dart` (prompt votes; post matchups, votes, downvotes, winsByHour and rank; the user's streak). The time-left label assumes prompts close at UTC midnight until lifetimes exist.
+- Cloud data for the stats: see the `TODO(cloud)` notes in `lib/data/prompt_stats.dart`: prompt likes (`PromptLikes` docs plus a counter function), post matchups, votes, downvotes, winsByHour and rank, the user's streak, and `Users/{uid}/AnsweredDays` for the calendar.
+- Tapping a friend in the answered list or the streak standings should open their profile. The time-left label assumes prompts close at UTC midnight until lifetimes exist.
 - Friends who answered needs friends lists by uid (Prerequisites).
 - Cache answered state in Isar so it shows before the per-prompt Firestore queries at login finish (today it lives in `PromptService.userPostsForPrompts`, filled by `getUserPostForPrompt`).
 - The old like/dislike-the-prompt buttons were removed: they saved nothing. Bring back prompt rating if creators need the feedback (it would need a PromptRatings collection).

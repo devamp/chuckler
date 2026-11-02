@@ -159,6 +159,96 @@ void main() {
     });
   });
 
+  group('stats interactions', () {
+    testWidgets('tapping the heart likes the prompt, and again unlikes it',
+        (tester) async {
+      await pumpCreatePage(tester);
+      await swipeLeft(tester);
+      final before = create.likesFor(1);
+      expect(find.text('$before'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Like this prompt'));
+      await tester.pump();
+      expect(find.text('${before + 1}'), findsOneWidget);
+      expect(find.byIcon(Icons.favorite), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Unlike this prompt'));
+      await tester.pump();
+      expect(find.text('$before'), findsOneWidget);
+    });
+
+    testWidgets('tapping the friends opens everyone who answered',
+        (tester) async {
+      await pumpCreatePage(tester);
+      await swipeLeft(tester);
+      expect(find.text('6 friends'), findsOneWidget);
+
+      await tester.tap(find.text('6 friends'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('6 FRIENDS ANSWERED'), findsOneWidget);
+      for (final name in ['skyler', 'marco', 'ava', 'jules', 'priya', 'theo']) {
+        expect(find.text(name), findsOneWidget);
+      }
+    });
+
+    testWidgets('no friends answered means nothing to open', (tester) async {
+      await pumpCreatePage(tester);
+      for (var i = 0; i < 3; i++) {
+        await swipeLeft(tester);
+      }
+      await tester.tap(find.text('No friends yet'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('ANSWERED'), findsNothing);
+    });
+
+    testWidgets('tapping the streak opens the calendar and top friend streaks',
+        (tester) async {
+      await pumpCreatePage(tester);
+      await tester.tap(find.text('4 day streak'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('4 DAY STREAK'), findsOneWidget);
+      // today is answered in the sample history; four days ago was missed
+      final now = DateTime.now().toUtc();
+      expect(find.bySemanticsLabel(RegExp(' ${now.day}, answered\$')),
+          findsOneWidget);
+      final gap = now.subtract(const Duration(days: 4));
+      if (gap.month == now.month) {
+        expect(find.bySemanticsLabel(RegExp(' ${gap.day}, missed\$')),
+            findsOneWidget);
+      }
+
+      await tester.scrollUntilVisible(find.text('jules'), 100,
+          scrollable: find.byType(Scrollable).last);
+      expect(find.text('TOP FRIEND STREAKS'), findsOneWidget);
+      expect(find.text("You're #4 of 7 with your friends"), findsOneWidget);
+      // the top 5 friends, not the user and not the 6th friend
+      for (final name in ['ava', 'theo', 'marco', 'skyler', 'jules']) {
+        expect(find.text(name), findsOneWidget);
+      }
+      expect(find.text('priya'), findsNothing);
+      expect(find.text('caden'), findsNothing);
+    });
+
+    testWidgets('the calendar goes back a month but not past this one',
+        (tester) async {
+      await pumpCreatePage(tester);
+      await tester.tap(find.text('4 day streak'));
+      await tester.pumpAndSettle();
+
+      final next = tester.widget<IconButton>(
+          find.widgetWithIcon(IconButton, Icons.chevron_right));
+      expect(next.onPressed, isNull);
+
+      final title = find.textContaining(RegExp(r'^[A-Z][a-z]+ \d{4}$'));
+      final shownBefore = tester.widget<Text>(title).data;
+      await tester.tap(find.byTooltip('Previous month'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<Text>(title).data, isNot(shownBefore));
+    });
+  });
+
   group('with live prompts', () {
     final live = [
       livePrompt('p1', 'My toaster would say ', 57),
@@ -232,6 +322,11 @@ void main() {
       expect(tester.takeException(), isNull);
       await swipeLeft(tester);
       expect(find.text('YOUR ANSWER'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.text('4 day streak'));
+      await tester.pumpAndSettle();
+      expect(find.text('4 DAY STREAK'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }

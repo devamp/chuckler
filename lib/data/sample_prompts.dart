@@ -50,7 +50,12 @@ Map<String, DbPost> sampleAnsweredPosts(String uid, String username) {
 PromptStats samplePromptStats(DbPrompt prompt, DbPost? myPost) {
   final seed = (prompt.promptId ?? '').codeUnits.fold(0, (a, b) => a + b);
   final answers = prompt.responses > 0 ? prompt.responses : 40 + seed % 300;
-  const friends = ['skyler', 'marco', 'ava', 'jules', 'priya'];
+  final friends = switch (prompt.promptId) {
+    'sample-date' => _sampleFriends,
+    'sample-ice-cream' => _sampleFriends.take(2).toList(),
+    'sample-bus' => <String>[],
+    _ => _sampleFriends.take(seed % 4).toList(),
+  };
 
   AnswerStats? mine;
   if (myPost != null) {
@@ -73,8 +78,39 @@ PromptStats samplePromptStats(DbPrompt prompt, DbPost? myPost) {
 
   return PromptStats(
     answers: answers,
-    votes: answers * 7 + seed % 50,
-    friendsAnswered: friends.take(seed % 4).toList(),
+    likes: answers ~/ 3 + seed % 20,
+    friendsAnswered: friends,
     mine: mine,
+  );
+}
+
+const List<String> _sampleFriends = [
+  'skyler',
+  'marco',
+  'ava',
+  'jules',
+  'priya',
+  'theo',
+];
+
+/// A sampleStreak-day streak ending today, gaps before it, and friends
+/// around the user in the standings
+StreakHistory sampleStreakHistory(DateTime nowUtc, String username) {
+  final today = DateTime.utc(nowUtc.year, nowUtc.month, nowUtc.day);
+  const daysAgo = [0, 1, 2, 3, 6, 7, 9, 12, 13, 14, 15, 18, 20, 21, 27, 33, 34];
+  return StreakHistory(
+    answeredDays: {
+      for (final d in daysAgo) today.subtract(Duration(days: d)),
+    },
+    standings: [
+      const FriendStreak('ava', 12),
+      const FriendStreak('theo', 9),
+      const FriendStreak('marco', 7),
+      FriendStreak(username.isEmpty ? 'you' : username, sampleStreak,
+          isMe: true),
+      const FriendStreak('skyler', 3),
+      const FriendStreak('jules', 1),
+      const FriendStreak('priya', 0),
+    ],
   );
 }

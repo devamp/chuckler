@@ -23,6 +23,10 @@ class PromptCard extends StatelessWidget {
   final PromptStats? stats;
   final DateTime now;
 
+  final int likes;
+  final bool liked;
+  final VoidCallback onLike;
+
   /// drops the stats strip, for when the keyboard is up
   final bool compact;
 
@@ -33,6 +37,9 @@ class PromptCard extends StatelessWidget {
     required this.answered,
     required this.stats,
     required this.now,
+    required this.likes,
+    required this.liked,
+    required this.onLike,
     this.compact = false,
   });
 
@@ -102,7 +109,15 @@ class PromptCard extends StatelessWidget {
               ),
             ),
           ),
-          if (!compact && !awaiting) PromptStatsStrip(stats: stats),
+          if (!compact && !awaiting)
+            PromptStatsStrip(
+              stats: stats,
+              likes: likes,
+              liked: liked,
+              onLike: onLike,
+              onFriends: () =>
+                  showFriendsAnswered(context, stats?.friendsAnswered ?? []),
+            ),
         ],
       ),
     );
@@ -198,32 +213,39 @@ class PageDots extends StatelessWidget {
   }
 }
 
-/// Answer streak in the header
+/// Answer streak in the header. Tap for the streak calendar.
 class StreakChip extends StatelessWidget {
   final int days;
+  final VoidCallback onTap;
 
-  const StreakChip({super.key, required this.days});
+  const StreakChip({super.key, required this.days, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return Tooltip(
       message: '$days days in a row answering a prompt',
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-            color: Colors.black54, borderRadius: BorderRadius.circular(20)),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.local_fire_department,
-                color: Colors.orangeAccent, size: 20),
-            const SizedBox(width: 4),
-            Text('$days day streak',
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontFamily: 'OpenSans',
-                    fontWeight: FontWeight.bold)),
-          ],
+      child: Material(
+        color: Colors.black54,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.local_fire_department,
+                    color: Colors.orangeAccent, size: 20),
+                const SizedBox(width: 4),
+                Text('$days day streak',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontFamily: 'OpenSans',
+                        fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
         ),
       ),
     );

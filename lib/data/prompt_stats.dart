@@ -10,8 +10,8 @@ import 'sample_prompts.dart';
 // sample numbers; release builds show zeros until the TODO(cloud) work lands.
 //
 // TODO(cloud): stats need these server-side counters:
-//   - Prompts/{promptId}: votes (every win or downvote cast on its matchups),
-//     incremented by the Votes-create function described in matchups.dart.
+//   - Prompts/{promptId}: likes, kept by a function on PromptLikes create and
+//     delete (see likePrompt below).
 //   - Posts/{postId}: matchups (times shown, i.e. views), votes (picks cast in
 //     its matchups), wins, downvotes. wins already exists; the rest are new
 //     and also written by the Votes-create function.
@@ -21,6 +21,8 @@ import 'sample_prompts.dart';
 //     (TODO.md section 4), ranked by rate rather than raw counts.
 //   - Users/{uid}.streak and lastAnsweredDay: updated by a Posts-create
 //     function so the client never writes its own streak.
+//   - Users/{uid}/AnsweredDays/{yyyy-MM-dd}: one empty doc per day the user
+//     answered, written by the same function. Feeds the streak calendar.
 // Clients only read these; Firestore rules should deny client writes to them.
 
 /// Which segment a prompt belongs to, from PromptDays/.../Prompts.type.
@@ -71,7 +73,10 @@ class AnswerStats {
 /// Stats for one prompt, plus the user's answer if they posted one
 class PromptStats {
   final int answers;
-  final int votes;
+
+  /// people who liked the prompt, including the user if likedByMe
+  final int likes;
+  final bool likedByMe;
 
   /// usernames of friends who answered
   final List<String> friendsAnswered;
@@ -81,7 +86,8 @@ class PromptStats {
 
   const PromptStats({
     this.answers = 0,
-    this.votes = 0,
+    this.likes = 0,
+    this.likedByMe = false,
     this.friendsAnswered = const [],
     this.mine,
   });
@@ -96,6 +102,7 @@ Future<PromptStats> getPromptStats(FirebaseFirestore firestore, String uid,
   // TODO(cloud): read the counters listed at the top of this file:
   //   - prompt totals from PromptDays/{promptDateId}/Prompts/{promptId}
   //     (prompt.responses already holds the answer count from login)
+  //   - likedByMe: whether PromptLikes/{promptDateId}_{promptId}_{uid} exists
   //   - the user's answer from Posts/{myPost.postId}
   //   - friends who answered: Posts where promptDateId and promptId match
   //     and uid is in the user's friends, chunked by 30 for whereIn. Needs
@@ -104,6 +111,57 @@ Future<PromptStats> getPromptStats(FirebaseFirestore firestore, String uid,
     answers: prompt.responses,
     mine: myPost == null ? null : AnswerStats(wins: myPost.wins ?? 0),
   );
+}
+
+/// Likes or unlikes a prompt for the user
+Future<void> likePrompt(FirebaseFirestore firestore, String uid,
+    DbPrompt prompt, bool liked) async {
+  // TODO(cloud): create or delete PromptLikes/{promptDateId}_{promptId}_{uid}
+  // with {uid, promptId, promptDateId, date}. Rules: a user may create and
+  // delete only their own like. A Cloud Function on create/delete keeps
+  // Prompts/{promptId}.likes in step, so clients never write the count.
+}
+
+/// A friend's place in the streak standings
+class FriendStreak {
+  final String username;
+  final int streak;
+  final bool isMe;
+
+  const FriendStreak(this.username, this.streak, {this.isMe = false});
+}
+
+/// The user's answered days and how their streak compares with friends'
+class StreakHistory {
+  /// UTC days (midnight) the user answered at least one prompt
+  final Set<DateTime> answeredDays;
+
+  /// the user and their friends, longest streak first
+  final List<FriendStreak> standings;
+
+  const StreakHistory(
+      {this.answeredDays = const {}, this.standings = const []});
+
+  bool answeredOn(DateTime day) =>
+      answeredDays.contains(DateTime.utc(day.year, day.month, day.day));
+
+  /// 1-based place among friends, 0 if the user isn't listed
+  int get myPlace => standings.indexWhere((f) => f.isMe) + 1;
+}
+
+/// Answered days for the streak calendar, plus friends' streaks
+Future<StreakHistory> getStreakHistory(
+    FirebaseFirestore firestore, String uid, String username) async {
+  // TODO(cloud):
+  //   - answeredDays: read Users/{uid}/AnsweredDays for the months shown
+  //     (doc ids are dates, so a range query on the id works). Could be
+  //     derived from Posts where uid == me, but that reads every post.
+  //   - standings: Users.streak for the user and each friend, by uid
+  //     (needs friends stored by uid, TODO.md Prerequisites). Sort by streak.
+  if (kDebugMode) {
+    return sampleStreakHistory(DateTime.now().toUtc(), username);
+  }
+  return const StreakHistory();
 }
 
 /// Days in a row the user has answered at least one prompt

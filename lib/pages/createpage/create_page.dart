@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../Theme/theme.dart';
 import '../../data/posts.dart';
+import '../../data/prompt_stats.dart';
 import '../../data/prompts.dart';
 import '../../data/sample_prompts.dart';
 import '../../data/users.dart';
@@ -18,6 +19,7 @@ import '../../state/session_service.dart';
 import 'create_answer_box.dart';
 import 'create_prompt_card.dart';
 import 'create_stats.dart';
+import 'create_streak_sheet.dart';
 
 /// Today's prompts, one per page. Swipe left and right between them, answer
 /// the one showing, and see how each prompt and your answer are doing.
@@ -166,6 +168,18 @@ class _CreatePageState extends State<CreatePage> {
     }
   }
 
+  void like(CreateService createService, int i) {
+    bool liked = createService.toggleLike(i);
+    DbPrompt prompt = createService.prompts[i];
+    if (isSamplePrompt(prompt)) return;
+    likePrompt(
+        Provider.of<FirebaseFirestore>(context, listen: false),
+        Provider.of<SessionService>(context, listen: false).loggedInUser?.uid ??
+            '',
+        prompt,
+        liked);
+  }
+
   void showNotLoggedIn() {
     showDialog(
         context: context,
@@ -219,6 +233,9 @@ class _CreatePageState extends State<CreatePage> {
                           answered: createService.answered(i),
                           stats: createService.statsFor(i),
                           now: _now,
+                          likes: createService.likesFor(i),
+                          liked: createService.likedFor(i),
+                          onLike: () => like(createService, i),
                           compact: typing,
                         ),
                       ),
@@ -263,7 +280,10 @@ class _CreatePageState extends State<CreatePage> {
               ],
             ),
           ),
-          if (createService.streak > 0) StreakChip(days: createService.streak),
+          if (createService.streak > 0)
+            StreakChip(
+                days: createService.streak,
+                onTap: () => showStreakSheet(context, createService.streak)),
         ],
       ),
     );

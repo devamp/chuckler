@@ -16,6 +16,9 @@ class CreateService with ChangeNotifier {
   int _streak = 0;
   final Map<String, String> _drafts = {};
   final Map<String, PromptStats> _stats = {};
+
+  /// likes the user changed on this phone, overriding PromptStats.likedByMe
+  final Map<String, bool> _liked = {};
   Map<String, DbPost>? _samplePosts;
 
   List<DbPrompt> get prompts => _prompts;
@@ -35,6 +38,24 @@ class CreateService with ChangeNotifier {
 
   String draftFor(int i) => _drafts[_key(_prompts[i])] ?? '';
   PromptStats? statsFor(int i) => _stats[_key(_prompts[i])];
+
+  bool likedFor(int i) =>
+      _liked[_key(_prompts[i])] ?? statsFor(i)?.likedByMe ?? false;
+
+  /// The prompt's like count, counting the user's like as it is now
+  int likesFor(int i) {
+    final s = statsFor(i);
+    if (s == null) return 0;
+    return s.likes - (s.likedByMe ? 1 : 0) + (likedFor(i) ? 1 : 0);
+  }
+
+  /// Flips the user's like on prompt i and returns the new state
+  bool toggleLike(int i) {
+    final liked = !likedFor(i);
+    _liked[_key(_prompts[i])] = liked;
+    notifyListeners();
+    return liked;
+  }
 
   String _key(DbPrompt p) => '${p.promptDateId}/${p.promptId}';
 
@@ -105,6 +126,7 @@ class CreateService with ChangeNotifier {
     _streak = 0;
     _drafts.clear();
     _stats.clear();
+    _liked.clear();
     _samplePosts = null;
     notifyListeners();
   }
