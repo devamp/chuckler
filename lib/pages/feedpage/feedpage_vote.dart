@@ -129,8 +129,13 @@ class _VotePageState extends State<VotePage> {
                           onVerticalDragUpdate: (d) =>
                               _dragDown += d.delta.dy,
                           onVerticalDragEnd: (d) {
+                            // only a net downward swipe moves on; upward
+                            // swipes never do, however fast they end
+                            double speed = d.velocity.pixelsPerSecond.dy;
                             if (_dragDown > 80 ||
-                                d.velocity.pixelsPerSecond.dy > 600) {
+                                (_dragDown > 20 && speed > 600)) {
+                              debugPrint(
+                                  'Vote swipe down: moved $_dragDown px, speed $speed px/s');
                               votingService.next();
                             }
                           },

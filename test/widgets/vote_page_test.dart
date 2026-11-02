@@ -130,6 +130,41 @@ void main() {
     expect(find.text('Your pick'), findsOneWidget);
   });
 
+  testWidgets('swiping up never moves on', (tester) async {
+    await pumpVotePage(tester);
+    final card = answer('Anyone know which button is autopilot?');
+
+    await tester.fling(card, const Offset(0, -300), 1500);
+    await tester.pumpAndSettle();
+    await tester.timedDrag(
+        card, const Offset(0, -200), const Duration(milliseconds: 800));
+    await tester.pumpAndSettle();
+
+    // an upward swipe that ends with a quick downward twitch
+    final g = await tester.startGesture(tester.getCenter(card));
+    for (var i = 1; i <= 10; i++) {
+      await g.moveBy(const Offset(0, -20),
+          timeStamp: Duration(milliseconds: 30 * i));
+    }
+    await g.moveBy(const Offset(0, 30),
+        timeStamp: const Duration(milliseconds: 310));
+    await g.up(timeStamp: const Duration(milliseconds: 312));
+    await tester.pumpAndSettle();
+
+    expect(voting.index, 0);
+    expect(card, findsOneWidget);
+  });
+
+  testWidgets('a slow downward drag also moves on', (tester) async {
+    await pumpVotePage(tester);
+
+    await tester.timedDrag(answer('Anyone know which button is autopilot?'),
+        const Offset(0, 200), const Duration(milliseconds: 800));
+    await tester.pumpAndSettle();
+
+    expect(voting.index, 1);
+  });
+
   testWidgets('buttons vote and skip like the gestures', (tester) async {
     await pumpVotePage(tester);
 
