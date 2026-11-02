@@ -85,6 +85,8 @@ Matchups exist only because of these triggers. The app itself does not read `Mat
 
 ## Known follow-ups
 
+Planned features (Create-tab prompt swiping, swipe-based Home voting) are in `TODO.md`.
+
 - Signup calls `httpsCallable('checkUsername')`, which is not defined in `functions/index.js`.
 - Cloud Functions run on Node 18, which Google has retired. Move to Node 20+ before any deploy.
 - All iOS plugins are Swift packages now, but `ios/` still has CocoaPods integration (`Podfile`, `Pods/`, includes in `Flutter/Debug.xcconfig` and `Release.xcconfig`). Flutter warns about it on every build; it is harmless but slows builds.
