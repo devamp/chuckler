@@ -32,6 +32,8 @@ Later, if the app grows, Local and Global prompt slots could be sold to companie
 - Tapping a friend in the answered list or the streak standings should open their profile. The time-left label assumes prompts close at UTC midnight until lifetimes exist.
 - Friends who answered needs friends lists by uid (Prerequisites).
 - Cache answered state in Isar so it shows before the per-prompt Firestore queries at login finish (today it lives in `PromptService.userPostsForPrompts`, filled by `getUserPostForPrompt`).
+- **Create a friend prompt:** a button on the Create tab opens a prompt builder (text before and after the blank, with a live preview) that posts the prompt to your friends. Limit 1 a day to start. Layout: `FriendPrompts` in `docs/data-model.md`.
+- **Prompt badge:** each card shows an icon in its top corner: the creator's photo for a friend prompt, the Chuckler logo for a daily prompt, and later a brand's logo with "Sponsored". The segment chip can sit next to it or be folded into it.
 - The old like/dislike-the-prompt buttons were removed: they saved nothing. Bring back prompt rating if creators need the feedback (it would need a PromptRatings collection).
 
 ## 2. Home tab: swipe voting
@@ -69,7 +71,7 @@ A matchup shows two answer cards stacked vertically.
 - "Past" means prompts whose lifetime has ended (see below).
 - Shows each past prompt's winner and final percentages.
 - **Comments are the same per-answer threads as in voting**, carried over unchanged.
-- Strangers' answers show without names; friends' answers show names (assumed; see `docs/data-model.md`).
+- Answers show with usernames, strangers' included: voting is over, so the anonymity ends. Read from each prompt's `Results` pages.
 
 ## 4. Prompt lifetime and ranking (after the mechanics are settled)
 

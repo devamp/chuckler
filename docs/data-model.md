@@ -28,7 +28,9 @@ Document limits worth remembering: 1 MiB per doc, 20,000 fields, about one susta
 | Streak history | A string of `1`/`0` per day (see Users). |
 | Private account data | Email and password stay in Firebase Auth, never copied to Firestore. |
 | Vote cards | **Anonymous**: matchups don't name their authors, so strangers can't trace answers to people. |
-| **Open:** Past feed | Assumed strangers' answers show **without names**; friends' answers show names. |
+| Past feed | Once a prompt ends, its answers show **with usernames**, strangers' included. Voting stays anonymous while the prompt is open. |
+| Friend prompts | Users create prompts for their friends from a button on the Create tab. |
+| Prompt badge | Every prompt shows an icon: the creator's photo for a friend prompt, the app's logo for a daily prompt, and later a brand's logo (with "Sponsored") for a sponsored prompt. |
 
 ## Collections
 
@@ -44,8 +46,12 @@ Users/{uid}                           ANYONE: { username, photoUrl }
   Notifications/{id}                  YOU
 
 PromptDays/{yyyy-MM-dd}               { date, opensAt, endsAt }
-  Prompts/{promptId}                  before, after, segment, counts { answers, likes, dislikes },
+  Prompts/{promptId}                  before, after, segment, badge, counts { answers, likes, dislikes },
                                       likedBy [uids]
+    Results/{n}                       ANY SIGNED-IN USER, after the prompt ends: answers with usernames
+
+FriendPrompts/{promptId}              AUDIENCE: a prompt a user wrote for their friends
+  Results/{n}                         AUDIENCE, after the prompt ends
 
 Posts/{postId}                        an answer; FRIENDS + YOU (author)
   CommentPages/{n}                    ANY SIGNED-IN USER: ~200 comments per page
@@ -94,7 +100,49 @@ answers: {
 
 `PromptDays/{yyyy-MM-dd}`: the date is the doc id, so today's prompts are a direct read.
 
-Friends prompts (user- or AI-created) are not designed yet. A separate collection is likely, so the global daily read stays simple and its read rule ("in the audience") is easier to write.
+Every prompt, daily or friend, carries a **badge**, the icon shown on its card:
+
+```
+badge: { kind: "app" | "friend" | "sponsor", label, iconUrl, uid? }
+```
+
+- `app`: the Chuckler logo, for daily prompts.
+- `friend`: the creator's photo and username (`uid` set, so a rename can update it).
+- `sponsor` (later): a brand's logo and name. The card must show a visible "Sponsored" label.
+
+The card reads the badge from the prompt doc, so it costs no extra reads.
+
+### Friend prompts
+
+```
+FriendPrompts/{promptId}
+  before, after, createdAt, opensAt, endsAt
+  badge: { kind: "friend", label: username, iconUrl: photoUrl, uid }
+  creatorUid
+  audience: [uids]              the creator + their friends when the prompt was made
+                                (open: or a group the creator picks; see TODO.md)
+  status: "active" | "ended" | "removed"
+  counts: { answers, likes, dislikes }, likedBy: [uids]
+```
+
+- **A separate collection, not `PromptDays`,** so the daily read stays one direct lookup, and the read rule is simply "your uid is in `audience`".
+- **Finding yours:** `FriendPrompts where audience array-contains me and status == "active"`. That's one read per active friend prompt, and the rule can approve it because the query itself asks for `audience` containing you.
+- **The audience is set by the server.** Rules can't cheaply check that every uid in a list is your friend (each check is a read, and rules allow only a handful per request). So the app writes the prompt without an audience, and a function fills it in from the creator's `Friends`. Until Blaze, a friend prompt can't reach anyone.
+- **Answers are normal `Posts`**, with `promptSource: "friends"` and `promptId` pointing here. Their matchups copy `audience`, so only the audience can read them. With a small audience, anonymous voting is thin cover; that's accepted.
+- **Limits:** cap prompts per user per day (1 to start) to control spam and cost. Friend prompts need report and block (App Store guideline 1.2), the same as answers and comments.
+- **A badge snapshot:** the creator's username and photo are copied into `badge`; a rename updates them.
+
+### Past results
+
+When a prompt ends, the checkpoint function writes its answers, best first, into `Results/{n}` under the prompt (about 100 per page):
+
+```
+answers: [ { postId, uid, username, photoUrl, answer, wins, dislikes, winRate, rank }, … ]
+```
+
+- **The Past feed reads one page per prompt** instead of one doc per answer. Comments still come from `Posts/{postId}/CommentPages`, which anyone can read.
+- **`Posts` stay friends-only.** Results are a public copy of finished answers only, so live stats and a user's other answers stay private.
+- Daily prompts' results are readable by any signed-in user; friend prompts' results only by their audience.
 
 ### Posts (answers)
 
@@ -184,13 +232,15 @@ To dislike, the app writes one batch:
 | Action | App writes | Cloud Functions then write |
 |---|---|---|
 | Sign up | `Usernames/{name}`, `Users/{uid}`, `FriendView/profile`, `Private/account`, in one transaction | |
-| Rename | `Usernames/old` deleted, `Usernames/new` created, `Users/{uid}`, in one transaction | the copies in `Posts`, `CommentPages` and friends' `Friends` docs |
+| Rename | `Usernames/old` deleted, `Usernames/new` created, `Users/{uid}`, in one transaction | the copies in `Posts`, `CommentPages`, `Results`, friend-prompt badges and friends' `Friends` docs |
 | Post an answer | `Posts/{id}` + `History/{month}`, batched | prompt `answers` count, streak and stats (transaction), the matchup |
 | Like | uid into `likedBy` + the count, one write | nothing |
 | Dislike | `Dislikes/{id}_{uid}` + the count, one batch (2 writes) | nothing |
 | Vote | `Votes/{id}` (+ the anonymous dislike for a downvote) | the matchup's counts |
 | Comment | a key in the latest `CommentPages` doc | post `commentCount` and `preview`, the live matchup's copy |
 | Accept a friend | delete the `FriendRequests` doc | `Friends` docs on both sides, both friend counts |
+| Create a friend prompt | `FriendPrompts/{id}` (before, after, badge, no audience) | `audience` from the creator's friends |
+| A prompt ends | | its `Results` pages, `final` stats in each author's `History` |
 
 Until the project is on Blaze, functions don't run in production. The app can batch its own `History` write, but counts and streaks stay on sample data, because client-written counts can be edited by anyone.
 
@@ -202,7 +252,8 @@ Until the project is on Blaze, functions don't run in production. The app can ba
 
 ## Rules in plain words
 
-- `Users/{uid}`, `CommentPages`, `MatchUps`: any signed-in user can read.
+- `Users/{uid}`, `CommentPages`, daily `MatchUps`, daily `Results`: any signed-in user can read.
+- `FriendPrompts`, their `Results`, and matchups for friend prompts: only uids in `audience`. The creator can create a friend prompt with themselves as creator and no `audience`, and can end or remove it; nobody else writes it.
 - `FriendView`, `History`, `Posts`: the owner, or a friend. Friendship is "`Users/{them}/Friends/{me}` exists". Each such check inside a rule is billed as one read.
 - `Private`, `FriendRequests`, `Notifications`, `Friends`: the owner only. `Friends` docs are written only by the server.
 - Counts, stats, streaks, ranks and `MatchUps`: the server only, except `likedBy`, `counts.likes` and `counts.dislikes`, which signed-in users may change only as described under Likes and Dislikes. Updating them doesn't require being able to read the doc, so strangers can dislike anonymous answers.
