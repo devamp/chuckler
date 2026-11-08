@@ -11,9 +11,9 @@ import 'sample_prompts.dart';
 //
 // TODO(cloud): the layout is in docs/data-model.md. Stats need these
 // server-side counts:
-//   - Prompts/{promptId}.counts: answers, likes, dislikes. likes and dislikes
-//     are kept by a function on Reactions create, update and delete (see
-//     likePrompt below).
+//   - Prompts/{promptId}.counts: answers (by a function), likes (written by
+//     the app with likedBy) and dislikes (written by the app with an
+//     anonymous Dislikes doc); see likePrompt below.
 //   - Posts/{postId}.counts: matchups (times paired, not views; views are
 //     not counted), votes, wins, dislikes. Totalled by the checkpoint
 //     function rather than on every vote, to save writes.
@@ -103,8 +103,7 @@ Future<PromptStats> getPromptStats(FirebaseFirestore firestore, String uid,
   // TODO(cloud): read the counters listed at the top of this file:
   //   - prompt totals from PromptDays/{promptDateId}/Prompts/{promptId}
   //     (prompt.responses already holds the answer count from login)
-  //   - likedByMe: whether Reactions/prompt_{promptId}_{uid} exists with
-  //     value 1
+  //   - likedByMe: whether the prompt's likedBy contains uid (no extra read)
   //   - the user's answer from Posts/{myPost.postId}
   //   - friends who answered: Posts where promptDateId and promptId match
   //     and uid is in the user's friends, chunked by 30 for whereIn. Needs
@@ -120,11 +119,13 @@ Future<PromptStats> getPromptStats(FirebaseFirestore firestore, String uid,
 /// Likes or unlikes a prompt for the user
 Future<void> likePrompt(FirebaseFirestore firestore, String uid,
     DbPrompt prompt, bool liked) async {
-  // TODO(cloud): set or delete Reactions/prompt_{promptId}_{uid} with
-  // {uid, type: 'prompt', targetId, value: 1, at}. Prompts can also be
-  // disliked (value -1). Rules: a user may create, flip and delete only
-  // their own reaction. A Cloud Function keeps Prompts/{promptId}.counts and
-  // the user's Users/{uid}/Reactions/{yyyy-MM} copy in step.
+  // TODO(cloud): one update to PromptDays/{promptDateId}/Prompts/{promptId}:
+  // likedBy arrayUnion(uid) (arrayRemove to unlike), counts.likes +1 / -1,
+  // Prompts can also be disliked, anonymously: create
+  // Dislikes/{promptId}_{uid} and bump counts.dislikes in one batch. Rules allow only those fields, only the
+  // writer's own uid, and counts equal to the list sizes. No Cloud Function
+  // needed. Remember the user's likes on the phone (Isar) for the "what I
+  // liked" list; see docs/data-model.md, Likes and dislikes.
 }
 
 /// A friend's place in the streak standings

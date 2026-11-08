@@ -28,7 +28,7 @@ Later, if the app grows, Local and Global prompt slots could be sold to companie
 **Built so far (live prompts, sample stats):** `lib/pages/createpage/` is a `PageView` of prompt cards (`create_prompt_card.dart`) with page dots, a time-left label, the answer box (`create_answer_box.dart`) and the stats widgets (`create_stats.dart`). `CreateService` keeps drafts per prompt across swipes and tab switches. Posting to a live prompt works as before (Posts doc, Isar cache, post count). With no live prompt, debug builds add three sample prompts (one per segment, one already answered) whose answers stay on the phone.
 
 **Still to do:**
-- Cloud data for the stats: see the `TODO(cloud)` notes in `lib/data/prompt_stats.dart`: prompt likes (`Reactions` docs plus a counter function), post matchups, votes, dislikes, winsByHour and rank, and the user's streak string, which also feeds the calendar.
+- Cloud data for the stats: see the `TODO(cloud)` notes in `lib/data/prompt_stats.dart`: prompt likes (liker uids on the prompt, written by the app), post matchups, votes, dislikes, winsByHour and rank, and the user's streak string, which also feeds the calendar.
 - Tapping a friend in the answered list or the streak standings should open their profile. The time-left label assumes prompts close at UTC midnight until lifetimes exist.
 - Friends who answered needs friends lists by uid (Prerequisites).
 - Cache answered state in Isar so it shows before the per-prompt Firestore queries at login finish (today it lives in `PromptService.userPostsForPrompts`, filled by `getUserPostForPrompt`).
@@ -49,8 +49,8 @@ A matchup shows two answer cards stacked vertically.
 - **Votes are final.** Back shows a previous matchup's results and your vote, but it cannot change the vote. A skipped matchup has no vote yet, so back can still vote on it.
 - **After voting, the results appear immediately:** each card's pick percentage ("62% picked this", counting only right swipes) and the comments on the answer you acted on.
 - **Comments are per answer**, one thread for the answer's whole lifetime, so they follow it as matchups change through the day and into the Past feed. In voting they're visible only after you vote: a preview of the answer you picked or downvoted appears with the results; tapping a card opens that answer's full thread, so you can read the other answer's comments too. Only voters can comment.
-- **A downvote is a dislike** on that answer, the same as disliking it in the Past feed. An answer can be disliked once per user.
-- **Vote cards are anonymous** (assumed; see `docs/data-model.md`).
+- **A downvote is a dislike** on that answer, the same as disliking it in the Past feed. An answer can be disliked once per user. Dislikes are anonymous: the author sees only the count. Likes store the likers' uids. The list of what you liked or disliked is kept on the phone.
+- **Vote cards are anonymous**: matchups don't name their authors.
 - **Teaching the gestures:** a one-time overlay the first time someone opens Home ("Swipe right on the winner, left to downvote, up to skip, down to go back"), plus matching buttons under the cards for discoverability and VoiceOver.
 - Accept swipes only when they start on the cards, away from the screen edges, so they don't collide with the iOS home and Notification Center gestures.
 - Each card shows whether the answer is from a friend, local or global. Not filtered by default; the user can filter to specific types. Friend and Local are relative to the viewer, so the tag is worked out per viewer, not stored on the post.

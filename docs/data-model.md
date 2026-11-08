@@ -5,7 +5,7 @@ The planned layout for Chuckler's Firestore data, and the reasons behind it. Not
 ## Principles
 
 - **Firestore bills per document read and write**, not per byte or per query. A query returning 20 docs is 20 reads; an empty query is 1. Free tier: 50,000 reads, 20,000 writes and 20,000 deletes per day.
-- **Look documents up by id instead of querying.** Day docs are named by date, votes and reactions by `{target}_{uid}`, usernames by the name itself.
+- **Look documents up by id instead of querying.** Day docs are named by date, votes by `{matchupId}_{uid}`, usernames by the name itself.
 - **Keep counts on the parent document.** Showing "340 answers" reads one prompt doc, never the 340 answers. Cloud Functions keep the counts, so clients can't edit them.
 - **Copy what a screen needs into the doc it reads.** A matchup carries both answers and the prompt text, so the voting screen reads one doc per matchup.
 - **One doc per action, so rules can stop duplicates.** A second vote on the same matchup is a write to an existing id, which the rules refuse, with no read first.
@@ -20,14 +20,14 @@ Document limits worth remembering: 1 MiB per doc, 20,000 fields, about one susta
 |---|---|
 | Friends | Mutual only (both accept). No followers. |
 | What strangers see | Only your username and profile photo. Everything else needs friendship. |
-| Likes and dislikes | On answers and prompts. A downvote in voting **is** a dislike on that answer. |
+| Likes and dislikes | On answers and prompts. A downvote in voting **is** a dislike on that answer. Likes are stored as liker uids on the answer or prompt itself. **Dislikes are anonymous:** only a count is visible, and nobody (the author included) can see who disliked. The user's own list of what they liked or disliked lives on the phone, not in the cloud. |
 | Usernames | Can change; a function updates the copies. Limit renames (e.g. once per 30 days). |
 | Comments | One thread per answer, for its whole lifetime: it follows the answer through re-pairings and into the Past feed. |
 | Comments in voting | Only after you vote. You see the thread of the answer you acted on; tap the other card to see its thread. Only voters can comment. |
 | Views | Not counted. Ranking uses votes. |
 | Streak history | A string of `1`/`0` per day (see Users). |
 | Private account data | Email and password stay in Firebase Auth, never copied to Firestore. |
-| **Open:** vote cards | Assumed **anonymous**: matchups don't name their authors, so strangers can't trace answers to people. |
+| Vote cards | **Anonymous**: matchups don't name their authors, so strangers can't trace answers to people. |
 | **Open:** Past feed | Assumed strangers' answers show **without names**; friends' answers show names. |
 
 ## Collections
@@ -41,11 +41,11 @@ Users/{uid}                           ANYONE: { username, photoUrl }
   Friends/{friendUid}                 YOU: { username, photoUrl, since }
   FriendRequests/{fromUid}            YOU: { username, photoUrl, sentAt }
   History/{yyyy-MM}                   FRIENDS + YOU: your answers that month
-  Reactions/{yyyy-MM}                 YOU: what you liked and disliked that month
   Notifications/{id}                  YOU
 
 PromptDays/{yyyy-MM-dd}               { date, opensAt, endsAt }
-  Prompts/{promptId}                  before, after, segment, counts { answers, likes, dislikes }
+  Prompts/{promptId}                  before, after, segment, counts { answers, likes, dislikes },
+                                      likedBy [uids]
 
 Posts/{postId}                        an answer; FRIENDS + YOU (author)
   CommentPages/{n}                    ANY SIGNED-IN USER: ~200 comments per page
@@ -54,7 +54,7 @@ MatchUps/{id}                         ANY SIGNED-IN USER: two answers, anonymous
   Private/owners                      SERVER ONLY: which uid wrote each answer
 
 Votes/{matchupId}_{uid}               one per user per matchup; create only
-Reactions/{type}_{targetId}_{uid}     one like or dislike per user per answer or prompt
+Dislikes/{targetId}_{uid}             one per user per answer or prompt; readable only by its creator
 ```
 
 ### Users
@@ -90,12 +90,6 @@ answers: {
 
 `final` is filled in once, when the prompt's lifetime ends. Live stats while a prompt is open come from `Posts`. Exempt `answers` from indexing in `firestore.indexes.json` (`fieldOverrides`).
 
-`Reactions/{yyyy-MM}`: the user's own copy of their likes and dislikes, for the "what I liked" screen:
-
-```
-items: { "post_abc": { type, targetId, value: 1 | -1, preview, at } }
-```
-
 ### Prompts
 
 `PromptDays/{yyyy-MM-dd}`: the date is the doc id, so today's prompts are a direct read.
@@ -110,6 +104,7 @@ promptDateId, promptId, before, after, answer, createdAt
 status: "active" | "retired"
 matched
 counts: { matchups, votes, wins, dislikes, likes, comments }
+likedBy [uids]
 winsByHour, rank
 commentCount, preview: [latest 2 comments]
 ```
@@ -142,13 +137,47 @@ answers: [
 - `preview` copies each answer's latest comments, so the preview after voting costs no reads. When someone comments, a function updates the post and the matchup the answer is currently in (usually one).
 - Pair posts in a transaction, so two posts created together can't claim the same unmatched post.
 
-### Votes and reactions
+### Votes
 
 `Votes/{matchupId}_{uid}`: `{ uid, card, type: "win" | "dislike", promptDateId, at }`. Create only; never updated or deleted. Votes are final.
 
-`Reactions/{type}_{targetId}_{uid}`: `{ uid, type: "post" | "prompt", targetId, value: 1 | -1, at }`. Create, update (flip like and dislike) and delete (undo) only your own.
+A downvote in voting writes, in one batch, the vote and an anonymous dislike on that answer (see below). An answer can be disliked only once, whether in voting or in the Past feed.
 
-A downvote in voting writes both docs in one batch: the vote, and a dislike on that answer. An answer can be disliked only once, whether in voting or in the Past feed.
+### Likes
+
+Posts and prompts store who liked them:
+
+```
+likedBy: [uid, uid, …]
+counts:  { likes, dislikes }
+```
+
+- **One write per like.** The app adds its uid with `arrayUnion` (or removes it with `arrayRemove`) and updates the count in the same write. `arrayUnion` ignores duplicates, so a double tap can't like twice.
+- **No Cloud Function needed, so it works on Spark.** The rules check that the write changed only `likedBy` and `counts.likes`, added or removed only the writer's own uid, and set the count to the size of the list.
+- **"Did I like this?"** is a lookup in a doc the screen has already read: no extra read.
+- **The user's own list of what they liked** is kept on the phone (Isar). It doesn't survive a reinstall or a new phone; for prompts, a `likedBy array-contains me` query can rebuild it. For answers it can't, because strangers' answers aren't readable.
+- **Size:** each uid is about 30 bytes, so a doc holds roughly 30,000 likers before the 1 MiB limit, and every read of the doc downloads the whole list. Far off at this scale. If an answer or prompt ever gets that popular, move its liker uids into a subcollection and keep only the count on the doc.
+- **Who can see likers:** anyone who can read the doc. For prompts that's every signed-in user, but a uid only leads to a username and photo, which are public anyway.
+- **Update limit:** about one write per second per doc. Not a concern at this scale.
+
+### Dislikes (anonymous)
+
+A dislike can't be a uid on the post: the author can read their own post, so they would see who disliked them. Hashing uids wouldn't help either, since the author could hash their friends' uids and compare. Instead:
+
+```
+Dislikes/{targetId}_{uid}     { uid, targetType: "post" | "prompt", at }
+                              readable only by uid; never by the author
+```
+
+To dislike, the app writes one batch:
+1. create `Dislikes/{postId}_{me}`
+2. add 1 to the post's `counts.dislikes`
+
+- **Once per person.** The doc id is fixed, so a second dislike would be a write to an existing doc, which the rules refuse.
+- **No Cloud Function needed.** The rule on the post allows `counts.dislikes` to go up by exactly 1 only when the same batch creates that user's `Dislikes` doc (`existsAfter`) and it didn't exist before (`exists`). Undoing deletes the doc and subtracts 1 under the same kind of check.
+- **The author sees only the count.** Nobody can query other people's `Dislikes` docs.
+- **Votes are final, so dislikes from voting can't be undone.** The rules refuse deleting a `Dislikes` doc while a `Votes` doc with type `dislike` exists for that answer (the dislike stores the `matchupId` it came from).
+- **Cost:** 2 writes per dislike, 0 reads. Liking a post you've disliked is refused by the rules (or the app first undoes the dislike).
 
 ## Who writes what
 
@@ -157,8 +186,9 @@ A downvote in voting writes both docs in one batch: the vote, and a dislike on t
 | Sign up | `Usernames/{name}`, `Users/{uid}`, `FriendView/profile`, `Private/account`, in one transaction | |
 | Rename | `Usernames/old` deleted, `Usernames/new` created, `Users/{uid}`, in one transaction | the copies in `Posts`, `CommentPages` and friends' `Friends` docs |
 | Post an answer | `Posts/{id}` + `History/{month}`, batched | prompt `answers` count, streak and stats (transaction), the matchup |
-| Like / dislike | `Reactions/{type}_{id}_{uid}` | target's count, the user's `Reactions/{month}` |
-| Vote | `Votes/{id}` (+ the dislike reaction) | the matchup's counts |
+| Like | uid into `likedBy` + the count, one write | nothing |
+| Dislike | `Dislikes/{id}_{uid}` + the count, one batch (2 writes) | nothing |
+| Vote | `Votes/{id}` (+ the anonymous dislike for a downvote) | the matchup's counts |
 | Comment | a key in the latest `CommentPages` doc | post `commentCount` and `preview`, the live matchup's copy |
 | Accept a friend | delete the `FriendRequests` doc | `Friends` docs on both sides, both friend counts |
 
@@ -174,8 +204,9 @@ Until the project is on Blaze, functions don't run in production. The app can ba
 
 - `Users/{uid}`, `CommentPages`, `MatchUps`: any signed-in user can read.
 - `FriendView`, `History`, `Posts`: the owner, or a friend. Friendship is "`Users/{them}/Friends/{me}` exists". Each such check inside a rule is billed as one read.
-- `Private`, `Reactions/{month}`, `FriendRequests`, `Notifications`, `Friends`: the owner only. `Friends` docs are written only by the server.
-- Counts, stats, streaks, ranks and `MatchUps`: the server only.
+- `Private`, `FriendRequests`, `Notifications`, `Friends`: the owner only. `Friends` docs are written only by the server.
+- Counts, stats, streaks, ranks and `MatchUps`: the server only, except `likedBy`, `counts.likes` and `counts.dislikes`, which signed-in users may change only as described under Likes and Dislikes. Updating them doesn't require being able to read the doc, so strangers can dislike anonymous answers.
+- `Dislikes/{id}_{uid}`: only that uid can read, create or delete it.
 - `Votes`: create your own, never change.
 
 To verify in the emulator: whether a query on `Posts` (e.g. friends who answered a prompt) is allowed under a rule whose friend check depends on each post's author. If not, the post function keeps a per-prompt list of which friends answered instead.
@@ -187,13 +218,13 @@ Assumes 3 prompts, 30 friends, 1 answer posted, 1 prompt liked, 20 votes.
 | Step | Reads | Writes |
 |---|---|---|
 | Open the app (first time today) | 7 | 0 |
-| Create tab stats, like a prompt | ~6 | 3 |
+| Create tab stats, like a prompt | ~6 | 1 |
 | Post an answer | ~2 (functions) | ~7 |
-| Vote on 20 matchups, previews included | 20 | ~40 |
+| Vote on 20 matchups (5 dislikes), previews included | 20 | ~50 |
 | Friends list (cached), a friend's profile, top streaks (cached daily) | ~5 | 0 |
-| **Total** | **~25–40** | **~35–50** |
+| **Total** | **~25–40** | **~55** |
 
-Writes run out before reads on the free tier: roughly 400–570 sessions a day. On Blaze a session costs about $0.0001.
+Each vote is the `Votes` doc plus the function's matchup count; a downvote adds 2 writes (the `Dislikes` doc and the count). Writes run out before reads on the free tier: roughly 360 sessions a day. On Blaze a session costs about $0.0001.
 
 ## Today
 

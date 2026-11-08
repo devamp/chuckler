@@ -104,9 +104,12 @@ Future<void> castVote(FirebaseFirestore firestore, String uid,
     Matchup matchup, MatchupVote vote) async {
   // TODO(cloud): write Votes/{matchupId}_{uid} with
   //   {uid, matchupId, promptDateId, card, type ('win' | 'dislike'), at}.
-  //   - A downvote is a dislike on that answer: in the same batch, set
-  //     Reactions/post_{postId}_{uid} to {value: -1}, so an answer is
-  //     disliked once whether in voting or in the Past feed.
+  //   - A downvote is an anonymous dislike on that answer: in the same
+  //     batch, create Dislikes/{postId}_{uid} (readable only by the voter)
+  //     and add 1 to Posts/{postId}.counts.dislikes. The fixed doc id means
+  //     an answer is disliked once, whether in voting or in the Past feed,
+  //     and the author only ever sees the count. Also remember it on the
+  //     phone for the "what I disliked" list. See docs/data-model.md.
   //   - Firestore rules: allow create when request.auth.uid == uid and the
   //     doc does not exist; never allow update or delete.
   //   - Counters: a Cloud Function on Votes create increments the matchup's
