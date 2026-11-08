@@ -1,6 +1,6 @@
 # TODO
 
-Planned features and the decisions made so far. Each section notes what exists today so the work can start from it.
+Planned features and the decisions made so far. Each section notes what exists today so the work can start from it. The Firestore layout behind all of this is in `docs/data-model.md`.
 
 ## Prompt types
 
@@ -28,7 +28,7 @@ Later, if the app grows, Local and Global prompt slots could be sold to companie
 **Built so far (live prompts, sample stats):** `lib/pages/createpage/` is a `PageView` of prompt cards (`create_prompt_card.dart`) with page dots, a time-left label, the answer box (`create_answer_box.dart`) and the stats widgets (`create_stats.dart`). `CreateService` keeps drafts per prompt across swipes and tab switches. Posting to a live prompt works as before (Posts doc, Isar cache, post count). With no live prompt, debug builds add three sample prompts (one per segment, one already answered) whose answers stay on the phone.
 
 **Still to do:**
-- Cloud data for the stats: see the `TODO(cloud)` notes in `lib/data/prompt_stats.dart`: prompt likes (`PromptLikes` docs plus a counter function), post matchups, votes, downvotes, winsByHour and rank, the user's streak, and `Users/{uid}/AnsweredDays` for the calendar.
+- Cloud data for the stats: see the `TODO(cloud)` notes in `lib/data/prompt_stats.dart`: prompt likes (`Reactions` docs plus a counter function), post matchups, votes, dislikes, winsByHour and rank, and the user's streak string, which also feeds the calendar.
 - Tapping a friend in the answered list or the streak standings should open their profile. The time-left label assumes prompts close at UTC midnight until lifetimes exist.
 - Friends who answered needs friends lists by uid (Prerequisites).
 - Cache answered state in Isar so it shows before the per-prompt Firestore queries at login finish (today it lives in `PromptService.userPostsForPrompts`, filled by `getUserPostForPrompt`).
@@ -47,26 +47,29 @@ A matchup shows two answer cards stacked vertically.
 
 - **One action per matchup:** a win or a downvote, never both. A downvote on one answer does not count as a win for the other.
 - **Votes are final.** Back shows a previous matchup's results and your vote, but it cannot change the vote. A skipped matchup has no vote yet, so back can still vote on it.
-- **After voting, the results appear immediately:** each card's pick percentage ("62% picked this", counting only right swipes) and the matchup's comments.
-- **Comments are per matchup** in voting, and only visible after you vote. A preview appears automatically with the results; tapping the results opens the full comment section.
+- **After voting, the results appear immediately:** each card's pick percentage ("62% picked this", counting only right swipes) and the comments on the answer you acted on.
+- **Comments are per answer**, one thread for the answer's whole lifetime, so they follow it as matchups change through the day and into the Past feed. In voting they're visible only after you vote: a preview of the answer you picked or downvoted appears with the results; tapping a card opens that answer's full thread, so you can read the other answer's comments too. Only voters can comment.
+- **A downvote is a dislike** on that answer, the same as disliking it in the Past feed. An answer can be disliked once per user.
+- **Vote cards are anonymous** (assumed; see `docs/data-model.md`).
 - **Teaching the gestures:** a one-time overlay the first time someone opens Home ("Swipe right on the winner, left to downvote, up to skip, down to go back"), plus matching buttons under the cards for discoverability and VoiceOver.
 - Accept swipes only when they start on the cards, away from the screen edges, so they don't collide with the iOS home and Notification Center gestures.
 - Each card shows whether the answer is from a friend, local or global. Not filtered by default; the user can filter to specific types. Friend and Local are relative to the viewer, so the tag is worked out per viewer, not stored on the post.
 
-**Built so far (sample data, no Firestore yet):** the Vote | Past toggle on Home, the swipe screen (`lib/pages/feedpage/feedpage_vote.dart`, `feedpage_vote_card.dart`), `VotingService`, results, the one-time tutorial and a placeholder for matchup comments. `lib/data/matchups.dart` holds `TODO(cloud)` notes for the real queries, Votes collection, rules and Cloud Functions.
+**Built so far (sample data, no Firestore yet):** the Vote | Past toggle on Home, the swipe screen (`lib/pages/feedpage/feedpage_vote.dart`, `feedpage_vote_card.dart`), `VotingService`, results, the one-time tutorial and a placeholder for answer comments. `lib/data/matchups.dart` holds `TODO(cloud)` notes for the real queries, Votes collection, rules and Cloud Functions.
 
 **Today:**
 - The Past view is the existing feed, built from `Posts` via `getPosts`. The app does not read `MatchUps` yet; the Cloud Function `createMatchup` writes them, but functions do not run on the free Spark plan (they do in the emulator).
 - The Global/Local/Friends dropdown (`DropdownButtonExample` in `feed_page.dart`) only changes its own label.
 - `likeAPost` and `postWin` exist in `lib/data/posts.dart`, but every call to them is commented out, and `likeAPost` increments a counter without awaiting it. Neither supports one-vote-per-user.
-- Comments are stored per answer (`Comments` keyed by `postId`). Matchup comments need a new model keyed by matchup.
+- Comments are stored one doc per comment (`Comments` keyed by `postId`). The plan moves them into pages of ~200 under each post (`Posts/{id}/CommentPages`).
 
 ## 3. Past responses feed
 
 - The current scrolling Home feed is kept and repurposed to show **past responses**, separate from voting. Reach it from a "Vote | Past" toggle at the top of Home.
 - "Past" means prompts whose lifetime has ended (see below).
 - Shows each past prompt's winner and final percentages.
-- **Comments here are per answer** (the existing `Comments` model), open to everyone since voting is over.
+- **Comments are the same per-answer threads as in voting**, carried over unchanged.
+- Strangers' answers show without names; friends' answers show names (assumed; see `docs/data-model.md`).
 
 ## 4. Prompt lifetime and ranking (after the mechanics are settled)
 
@@ -78,9 +81,9 @@ Each prompt has a **lifetime**. At checkpoints during it, the server makes decis
 - When the lifetime ends, the prompt moves to the Past feed with its winner.
 
 Ranking must use **rates, not raw counts**, or matchups made early in the day always win:
-- Count **views** per matchup, not only votes.
-- Each matchup gets a minimum number of views before it can be judged (20 is a starting guess; tune it).
-- Score by picks and engagement per view, minus downvotes per view.
+- **No view counting** (too many writes). A matchup's rate is wins ÷ (wins + dislikes).
+- Each matchup gets a minimum number of votes before it can be judged (20 is a starting guess; tune it).
+- Score by picks, comments and likes per vote, minus dislikes per vote.
 
 All of this runs **server-side** (scheduled Cloud Functions at the checkpoints) so users can't game it.
 
@@ -88,7 +91,7 @@ All of this runs **server-side** (scheduled Cloud Functions at the checkpoints) 
 
 ## Prerequisites
 
-- **Friends lists by uid.** Friends lists store usernames while pending requests store uids, and usernames aren't guaranteed unique (signup's `checkUsername` callable doesn't exist). Switch to uids before any friends-only feature.
+- **Friends lists by uid.** Friends lists store usernames while pending requests store uids, and usernames aren't guaranteed unique (signup's username check is commented out). Switch to uids before any friends-only feature.
 - **One vote per user per matchup**, e.g. `Votes/{matchupId}_{uid}`, with totals derived from those. Firestore rules can allow create but not update, which enforces "votes are final" on the server.
 - **Blaze plan before launch.** Matchups, ranking, checkpoints and AI prompt generation all need Cloud Functions. At this scale usage should stay within the free quotas; set a budget alert.
 - **Moderation for user-generated content.** Friend-created prompts and answers need report, block and filtering to satisfy App Store Review guideline 1.2.
@@ -104,7 +107,7 @@ All of this runs **server-side** (scheduled Cloud Functions at the checkpoints) 
 
 1. Create-tab swiping (small; reuses the chevron logic) and caching answered prompts in Isar.
 2. Friends lists by uid, and one vote per user.
-3. Home swipe voting with Global prompts only, reading `MatchUps` from the emulator, with matchup comments.
+3. Home swipe voting with Global prompts only, reading `MatchUps` from the emulator, with answer comments.
 4. Past responses feed.
 5. Friends prompts (user-created, then AI-generated) and the friend filter.
 6. Prompt lifetime, ranking and re-pairing.

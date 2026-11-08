@@ -71,6 +71,29 @@ void main() {
     expect(voting.voteFor(voting.current!)!.card, 0);
   });
 
+  testWidgets('after voting, each card opens its own answer\'s comments',
+      (tester) async {
+    await pumpVotePage(tester);
+    await tester.drag(
+        answer('Anyone know which button is autopilot?'), const Offset(300, 0));
+    await tester.pumpAndSettle();
+
+    // the preview belongs to the answer you picked
+    await tester.tap(find.text('Comments'));
+    await tester.pumpAndSettle();
+    expect(find.text('"Anyone know which button is autopilot?"'),
+        findsOneWidget);
+    Navigator.of(tester.element(find.byType(BottomSheet))).pop();
+    await tester.pumpAndSettle();
+
+    // tapping the other card shows the other answer's thread
+    await tester.tap(
+        answer('Okay, this is my first time without the simulator'));
+    await tester.pumpAndSettle();
+    expect(find.text('"Okay, this is my first time without the simulator"'),
+        findsOneWidget);
+  });
+
   testWidgets('swiping left on a card downvotes it', (tester) async {
     await pumpVotePage(tester);
 

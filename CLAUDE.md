@@ -89,7 +89,7 @@ Matchups exist only because of these triggers. The app itself does not read `Mat
 
 ## Known follow-ups
 
-Planned features and design decisions (prompt types, Create-tab swiping, Home swipe voting, past responses feed, prompt lifetimes) are in `TODO.md`.
+Planned features and design decisions (prompt types, Create-tab swiping, Home swipe voting, past responses feed, prompt lifetimes) are in `TODO.md`. The planned Firestore layout (collections, rules, who writes what, read/write costs) is in `docs/data-model.md`; the current layout is summarized at its end.
 
 - Deployed functions don't match the repo (checked 2026-11-08 with `firebase functions:list`). Production has only `checkUsername`, a v1 callable on Node 18 whose source was never committed. `createMatchup` and `incrementPrompt` have never been deployed, so production posts get no matchups and no response counts. The app doesn't call `checkUsername`: the call in `signup_page.dart` is commented out, so usernames aren't checked for uniqueness.
 - `createMatchup` queries Posts on `promptId`, `promptDateId`, `matched` and orders by `date`. No composite index covers that, so it would fail in production; the emulator doesn't enforce indexes. The `random` index on Posts is unused by the app. Deployed indexes match `firestore.indexes.json`.

@@ -88,19 +88,42 @@ class _VotePageState extends State<VotePage> {
     }
   }
 
-  void openComments(Matchup m) {
-    // TODO(cloud): matchup comments need a new model keyed by matchup, e.g.
-    // Comments with a matchupId field or MatchUps/{id}/Comments. The existing
-    // Comments collection is keyed by postId and belongs to the Past feed.
+  /// Opens the comment thread of one answer. Threads belong to the answer,
+  /// not the matchup, so they follow it as matchups change and into Past.
+  void openComments(Matchup m, int card) {
+    // TODO(cloud): read Posts/{postId}/CommentPages/{n} for
+    // m.answers[card].postId, about 200 comments per page, so a thread is one
+    // read per page. Posting adds one key to the latest page; rules allow it
+    // only for users with a Votes doc on a matchup containing that answer.
+    // See docs/data-model.md (Posts, CommentPages).
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.black87,
-      builder: (context) => const SizedBox(
+      builder: (context) => SizedBox(
         height: 250,
-        child: Center(
-          child: Text(
-            'Matchup comments are coming soon',
-            style: TextStyle(color: Colors.white, fontFamily: 'OpenSans'),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('"${m.answers[card].answer}"',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      color: answerColors[card],
+                      fontFamily: 'OpenSans',
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16)),
+              const Expanded(
+                child: Center(
+                  child: Text(
+                    'Comments on this answer are coming soon',
+                    style:
+                        TextStyle(color: Colors.white, fontFamily: 'OpenSans'),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -166,10 +189,10 @@ class _VotePageState extends State<VotePage> {
               card: card,
               pickPercent: m.pickPercent(card),
               onVote: (type) => onVote(m, card, type),
-              onOpenComments: () => openComments(m),
+              onOpenComments: () => openComments(m, card),
             ),
           ),
-        if (myVote != null) commentsPreview(m),
+        if (myVote != null) commentsPreview(m, myVote.card),
       ],
     );
   }
@@ -207,28 +230,32 @@ class _VotePageState extends State<VotePage> {
     );
   }
 
-  Widget commentsPreview(Matchup m) {
+  /// Comments on the answer the user just picked or downvoted. Tapping the
+  /// other card opens that answer's thread instead.
+  Widget commentsPreview(Matchup m, int card) {
     double width = MediaQuery.of(context).size.width;
-    // TODO(cloud): show the first 2-3 matchup comments here once they exist.
+    // TODO(cloud): show m.answers[card].preview (the latest 2 comments) and
+    // commentCount. A function copies them into the matchup when someone
+    // comments, so this costs no reads.
     return GestureDetector(
-      onTap: () => openComments(m),
+      onTap: () => openComments(m, card),
       child: Container(
         width: double.infinity,
         margin: EdgeInsets.symmetric(horizontal: width / 30, vertical: 4),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
             color: Colors.black54, borderRadius: BorderRadius.circular(20)),
-        child: const Row(
+        child: Row(
           children: [
-            Icon(Icons.chat_bubble_outline, color: Colors.amberAccent, size: 18),
+            Icon(Icons.chat_bubble_outline, color: answerColors[card], size: 18),
             SizedBox(width: 8),
-            Text('Comments',
+            const Text('Comments',
                 style: TextStyle(
                     color: Colors.white,
                     fontFamily: 'OpenSans',
                     fontWeight: FontWeight.bold)),
-            Spacer(),
-            Icon(Icons.chevron_right, color: Colors.white),
+            const Spacer(),
+            const Icon(Icons.chevron_right, color: Colors.white),
           ],
         ),
       ),

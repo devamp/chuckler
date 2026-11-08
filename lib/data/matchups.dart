@@ -4,13 +4,15 @@ import 'sample_matchups.dart';
 // Swipe voting on the Home tab. This file runs on sample data for now; the
 // TODO(cloud) notes list what the real queries and Cloud Functions need.
 //
-// TODO(cloud): MatchUps documents (written by createMatchup in
-// functions/index.js) are missing fields the voting screen needs:
-//   - downvotes1 / downvotes2 counters (only wins1 / wins2 exist)
+// TODO(cloud): the planned layout is in docs/data-model.md. MatchUps
+// documents (written by createMatchup in functions/index.js) need:
+//   - an answers list of {postId, answer, wins, dislikes, commentCount,
+//     preview}, with no uids or usernames: vote cards are anonymous. The
+//     authors' uids move to MatchUps/{id}/Private/owners (server only).
+//   - dislikes per answer (a downvote is a dislike); only wins exist today
 //   - a created date, to order matchups and to scope "today"
-//   - the prompt's before/after text, or the app must join each matchup with
-//     PromptDays/{promptDateId}/Prompts/{promptId}
-//   - the prompt's segment (friends / local / global)
+//   - the prompt's before/after text and segment, so voting needs no joins
+//   - no views counter: ranking uses votes
 // createMatchup should also pair posts inside a transaction: two posts
 // created at the same moment can currently claim the same unmatched post.
 
@@ -101,10 +103,14 @@ Future<List<Matchup>> getVotingMatchups(
 Future<void> castVote(FirebaseFirestore firestore, String uid,
     Matchup matchup, MatchupVote vote) async {
   // TODO(cloud): write Votes/{matchupId}_{uid} with
-  //   {uid, matchupId, promptDateId, card, type ('win' | 'downvote'), date}.
+  //   {uid, matchupId, promptDateId, card, type ('win' | 'dislike'), at}.
+  //   - A downvote is a dislike on that answer: in the same batch, set
+  //     Reactions/post_{postId}_{uid} to {value: -1}, so an answer is
+  //     disliked once whether in voting or in the Past feed.
   //   - Firestore rules: allow create when request.auth.uid == uid and the
   //     doc does not exist; never allow update or delete.
-  //   - Counters: a Cloud Function on Votes create should increment the
-  //     matchup's wins1/wins2/downvotes1/downvotes2, so clients can't edit
-  //     counts directly (rules then deny client writes to those fields).
+  //   - Counters: a Cloud Function on Votes create increments the matchup's
+  //     wins or dislikes for that answer, so clients can't edit counts
+  //     (rules deny client writes to MatchUps). Post totals are added up at
+  //     checkpoints, not per vote.
 }

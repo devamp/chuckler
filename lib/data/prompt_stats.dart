@@ -9,20 +9,21 @@ import 'sample_prompts.dart';
 // by the incrementPrompt Cloud Function). Debug builds fill the rest with
 // sample numbers; release builds show zeros until the TODO(cloud) work lands.
 //
-// TODO(cloud): stats need these server-side counters:
-//   - Prompts/{promptId}: likes, kept by a function on PromptLikes create and
-//     delete (see likePrompt below).
-//   - Posts/{postId}: matchups (times shown, i.e. views), votes (picks cast in
-//     its matchups), wins, downvotes. wins already exists; the rest are new
-//     and also written by the Votes-create function.
-//   - Posts/{postId}.winsByHour: a map of hour -> wins, or a WinsByHour
-//     subcollection if the map grows too large. Feeds the bar chart.
-//   - Posts/{postId}.rank: written by the scheduled checkpoint function
-//     (TODO.md section 4), ranked by rate rather than raw counts.
-//   - Users/{uid}.streak and lastAnsweredDay: updated by a Posts-create
-//     function so the client never writes its own streak.
-//   - Users/{uid}/AnsweredDays/{yyyy-MM-dd}: one empty doc per day the user
-//     answered, written by the same function. Feeds the streak calendar.
+// TODO(cloud): the layout is in docs/data-model.md. Stats need these
+// server-side counts:
+//   - Prompts/{promptId}.counts: answers, likes, dislikes. likes and dislikes
+//     are kept by a function on Reactions create, update and delete (see
+//     likePrompt below).
+//   - Posts/{postId}.counts: matchups (times paired, not views; views are
+//     not counted), votes, wins, dislikes. Totalled by the checkpoint
+//     function rather than on every vote, to save writes.
+//   - Posts/{postId}.winsByHour: a map of hour -> wins. Feeds the bar chart.
+//   - Posts/{postId}.rank: written by the checkpoint function (TODO.md
+//     section 4), ranked by rate rather than raw counts.
+//   - Users/{uid}/FriendView/profile.streak: {days, from, current, longest},
+//     where days is a string with one 1 or 0 per prompt day. Updated in a
+//     transaction by the Posts-create function, so clients never write
+//     their own streak. Feeds the streak chip and the calendar.
 // Clients only read these; Firestore rules should deny client writes to them.
 
 /// Which segment a prompt belongs to, from PromptDays/.../Prompts.type.
@@ -102,11 +103,14 @@ Future<PromptStats> getPromptStats(FirebaseFirestore firestore, String uid,
   // TODO(cloud): read the counters listed at the top of this file:
   //   - prompt totals from PromptDays/{promptDateId}/Prompts/{promptId}
   //     (prompt.responses already holds the answer count from login)
-  //   - likedByMe: whether PromptLikes/{promptDateId}_{promptId}_{uid} exists
+  //   - likedByMe: whether Reactions/prompt_{promptId}_{uid} exists with
+  //     value 1
   //   - the user's answer from Posts/{myPost.postId}
   //   - friends who answered: Posts where promptDateId and promptId match
   //     and uid is in the user's friends, chunked by 30 for whereIn. Needs
-  //     friends stored by uid first (TODO.md, Prerequisites).
+  //     friends stored by uid first (TODO.md, Prerequisites). Posts are
+  //     friends-only, so check in the emulator that the rules allow this
+  //     query (docs/data-model.md, Rules).
   return PromptStats(
     answers: prompt.responses,
     mine: myPost == null ? null : AnswerStats(wins: myPost.wins ?? 0),
@@ -116,10 +120,11 @@ Future<PromptStats> getPromptStats(FirebaseFirestore firestore, String uid,
 /// Likes or unlikes a prompt for the user
 Future<void> likePrompt(FirebaseFirestore firestore, String uid,
     DbPrompt prompt, bool liked) async {
-  // TODO(cloud): create or delete PromptLikes/{promptDateId}_{promptId}_{uid}
-  // with {uid, promptId, promptDateId, date}. Rules: a user may create and
-  // delete only their own like. A Cloud Function on create/delete keeps
-  // Prompts/{promptId}.likes in step, so clients never write the count.
+  // TODO(cloud): set or delete Reactions/prompt_{promptId}_{uid} with
+  // {uid, type: 'prompt', targetId, value: 1, at}. Prompts can also be
+  // disliked (value -1). Rules: a user may create, flip and delete only
+  // their own reaction. A Cloud Function keeps Prompts/{promptId}.counts and
+  // the user's Users/{uid}/Reactions/{yyyy-MM} copy in step.
 }
 
 /// A friend's place in the streak standings
@@ -153,11 +158,12 @@ class StreakHistory {
 Future<StreakHistory> getStreakHistory(
     FirebaseFirestore firestore, String uid, String username) async {
   // TODO(cloud):
-  //   - answeredDays: read Users/{uid}/AnsweredDays for the months shown
-  //     (doc ids are dates, so a range query on the id works). Could be
-  //     derived from Posts where uid == me, but that reads every post.
-  //   - standings: Users.streak for the user and each friend, by uid
-  //     (needs friends stored by uid, TODO.md Prerequisites). Sort by streak.
+  //   - answeredDays: decode streak.days and streak.from from the user's
+  //     FriendView/profile, which login already reads, so no extra reads.
+  //     Days after the end of the string are missed days.
+  //   - standings: streak.current from each friend's FriendView/profile, by
+  //     uid (needs friends stored by uid, TODO.md Prerequisites). Cache for
+  //     the day: it costs about two reads per friend (doc + friend check).
   if (kDebugMode) {
     return sampleStreakHistory(DateTime.now().toUtc(), username);
   }
@@ -166,7 +172,8 @@ Future<StreakHistory> getStreakHistory(
 
 /// Days in a row the user has answered at least one prompt
 Future<int> getAnswerStreak(FirebaseFirestore firestore, String uid) async {
-  // TODO(cloud): read Users/{uid}.streak (see the top of this file).
+  // TODO(cloud): read streak.current from Users/{uid}/FriendView/profile
+  // (see the top of this file); show 0 if the string ends before yesterday.
   return kDebugMode ? sampleStreak : 0;
 }
 
