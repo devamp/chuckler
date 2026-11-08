@@ -91,7 +91,8 @@ Matchups exist only because of these triggers. The app itself does not read `Mat
 
 Planned features and design decisions (prompt types, Create-tab swiping, Home swipe voting, past responses feed, prompt lifetimes) are in `TODO.md`.
 
-- Signup calls `httpsCallable('checkUsername')`, which is not defined in `functions/index.js`.
+- Deployed functions don't match the repo (checked 2026-11-08 with `firebase functions:list`). Production has only `checkUsername`, a v1 callable on Node 18 whose source was never committed. `createMatchup` and `incrementPrompt` have never been deployed, so production posts get no matchups and no response counts. The app doesn't call `checkUsername`: the call in `signup_page.dart` is commented out, so usernames aren't checked for uniqueness.
+- `createMatchup` queries Posts on `promptId`, `promptDateId`, `matched` and orders by `date`. No composite index covers that, so it would fail in production; the emulator doesn't enforce indexes. The `random` index on Posts is unused by the app. Deployed indexes match `firestore.indexes.json`.
 - Cloud Functions run on Node 18, which Google has retired. Move to Node 20+ before any deploy.
 - All iOS plugins are Swift packages now, but `ios/` still has CocoaPods integration (`Podfile`, `Pods/`, includes in `Flutter/Debug.xcconfig` and `Release.xcconfig`). Flutter warns about it on every build; it is harmless but slows builds.
 - Logout (`lib/pages/accountpage/settings.dart`) navigates to `'/login'`, which is not a defined route, so the default route builds a second `MyApp` inside the first.
