@@ -33,7 +33,7 @@ Later, if the app grows, Local and Global prompt slots could be sold to companie
 - Friends who answered needs friends lists by uid (Prerequisites).
 - Cache answered state in Isar so it shows before the per-prompt Firestore queries at login finish (today it lives in `PromptService.userPostsForPrompts`, filled by `getUserPostForPrompt`).
 - **Create a friend prompt:** a button on the Create tab opens a prompt builder (text before and after the blank, with a live preview) that posts the prompt to your friends. Limit 1 a day to start. Layout: `FriendPrompts` in `docs/data-model.md`.
-- **Prompt badge:** each card shows an icon in its top corner: the creator's photo for a friend prompt, the Chuckler logo for a daily prompt, and later a brand's logo with "Sponsored". The segment chip can sit next to it or be folded into it.
+- **Creator icon:** each card shows its creator's profile icon, like a normal user's: a friend's photo for a friend prompt, the official Chuckler account's icon for a daily prompt, and later a sponsor's account (with "Sponsored"). Tapping it opens the creator's profile. The Chuckler account needs an icon (to be designed) and a fun bio.
 - The old like/dislike-the-prompt buttons were removed: they saved nothing. Bring back prompt rating if creators need the feedback (it would need a PromptRatings collection).
 
 ## 2. Home tab: swipe voting

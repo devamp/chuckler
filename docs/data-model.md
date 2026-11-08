@@ -30,7 +30,7 @@ Document limits worth remembering: 1 MiB per doc, 20,000 fields, about one susta
 | Vote cards | **Anonymous**: matchups don't name their authors, so strangers can't trace answers to people. |
 | Past feed | Once a prompt ends, its answers show **with usernames**, strangers' included. Voting stays anonymous while the prompt is open. |
 | Friend prompts | Users create prompts for their friends from a button on the Create tab. |
-| Prompt badge | Every prompt shows an icon: the creator's photo for a friend prompt, the app's logo for a daily prompt, and later a brand's logo (with "Sponsored") for a sponsored prompt. |
+| Prompt creator icon | Every prompt shows its creator's profile icon, like any user's. Daily prompts come from an official **Chuckler** account with its own icon and a fun public bio. Sponsors will later be official accounts too, shown with a "Sponsored" label. |
 
 ## Collections
 
@@ -38,6 +38,7 @@ Document limits worth remembering: 1 MiB per doc, 20,000 fields, about one susta
 Usernames/{username}                  { uid }   one per name; makes names unique
 
 Users/{uid}                           ANYONE: { username, photoUrl }
+                                      official accounts add: kind, bio (public)
   FriendView/profile                  FRIENDS + YOU: bio, stats, streak
   Private/account                     YOU: age, notification settings, push tokens, blocked uids
   Friends/{friendUid}                 YOU: { username, photoUrl, since }
@@ -46,7 +47,7 @@ Users/{uid}                           ANYONE: { username, photoUrl }
   Notifications/{id}                  YOU
 
 PromptDays/{yyyy-MM-dd}               { date, opensAt, endsAt }
-  Prompts/{promptId}                  before, after, segment, badge, counts { answers, likes, dislikes },
+  Prompts/{promptId}                  before, after, segment, creator, counts { answers, likes, dislikes },
                                       likedBy [uids]
     Results/{n}                       ANY SIGNED-IN USER, after the prompt ends: answers with usernames
 
@@ -66,6 +67,18 @@ Dislikes/{targetId}_{uid}             one per user per answer or prompt; readabl
 ### Users
 
 `Users/{uid}` is read constantly (friends lists, comments, username lookups), so it holds only what strangers may see.
+
+**Official accounts** are `Users` docs too, so they look and behave like anyone else's profile:
+
+```
+Users/chuckler      { username: "Chuckler", photoUrl, kind: "official", bio: "…" }
+Users/{sponsorId}   { username, photoUrl, kind: "sponsor", bio }          (later)
+```
+
+- `kind` is missing (or `"user"`) for normal users. For official and sponsor accounts, `bio` sits on the public doc, since anyone may read it; normal users' bios stay friends-only in `FriendView`.
+- Their usernames are reserved in `Usernames`, so nobody can register "chuckler".
+- Only the server or an admin writes them. Nobody can sign in as them; they own prompts, not answers.
+- Nobody can friend them: tapping their icon opens their public profile.
 
 `FriendView/profile`:
 
@@ -100,25 +113,24 @@ answers: {
 
 `PromptDays/{yyyy-MM-dd}`: the date is the doc id, so today's prompts are a direct read.
 
-Every prompt, daily or friend, carries a **badge**, the icon shown on its card:
+Every prompt, daily or friend, names its **creator**, shown on the card as a normal profile icon:
 
 ```
-badge: { kind: "app" | "friend" | "sponsor", label, iconUrl, uid? }
+creator: { uid, username, photoUrl, kind }
 ```
 
-- `app`: the Chuckler logo, for daily prompts.
-- `friend`: the creator's photo and username (`uid` set, so a rename can update it).
-- `sponsor` (later): a brand's logo and name. The card must show a visible "Sponsored" label.
+- Daily prompts: the Chuckler account (`uid: "chuckler"`, `kind: "official"`).
+- Friend prompts: the friend who wrote it. `kind` is absent.
+- Sponsored prompts (later): the sponsor's account (`kind: "sponsor"`). The card must show a visible "Sponsored" label.
 
-The card reads the badge from the prompt doc, so it costs no extra reads.
+The username and photo are copied into the prompt, so the card costs no extra reads; a rename updates the copy. Tapping the icon opens the creator's profile: a friend's full profile, or an official account's public one with its bio.
 
 ### Friend prompts
 
 ```
 FriendPrompts/{promptId}
   before, after, createdAt, opensAt, endsAt
-  badge: { kind: "friend", label: username, iconUrl: photoUrl, uid }
-  creatorUid
+  creator: { uid, username, photoUrl }
   audience: [uids]              the creator + their friends when the prompt was made
                                 (open: or a group the creator picks; see TODO.md)
   status: "active" | "ended" | "removed"
@@ -130,7 +142,7 @@ FriendPrompts/{promptId}
 - **The audience is set by the server.** Rules can't cheaply check that every uid in a list is your friend (each check is a read, and rules allow only a handful per request). So the app writes the prompt without an audience, and a function fills it in from the creator's `Friends`. Until Blaze, a friend prompt can't reach anyone.
 - **Answers are normal `Posts`**, with `promptSource: "friends"` and `promptId` pointing here. Their matchups copy `audience`, so only the audience can read them. With a small audience, anonymous voting is thin cover; that's accepted.
 - **Limits:** cap prompts per user per day (1 to start) to control spam and cost. Friend prompts need report and block (App Store guideline 1.2), the same as answers and comments.
-- **A badge snapshot:** the creator's username and photo are copied into `badge`; a rename updates them.
+- **A creator snapshot:** the creator's username and photo are copied into `creator`; a rename updates them.
 
 ### Past results
 
@@ -232,14 +244,14 @@ To dislike, the app writes one batch:
 | Action | App writes | Cloud Functions then write |
 |---|---|---|
 | Sign up | `Usernames/{name}`, `Users/{uid}`, `FriendView/profile`, `Private/account`, in one transaction | |
-| Rename | `Usernames/old` deleted, `Usernames/new` created, `Users/{uid}`, in one transaction | the copies in `Posts`, `CommentPages`, `Results`, friend-prompt badges and friends' `Friends` docs |
+| Rename | `Usernames/old` deleted, `Usernames/new` created, `Users/{uid}`, in one transaction | the copies in `Posts`, `CommentPages`, `Results`, prompt `creator` copies and friends' `Friends` docs |
 | Post an answer | `Posts/{id}` + `History/{month}`, batched | prompt `answers` count, streak and stats (transaction), the matchup |
 | Like | uid into `likedBy` + the count, one write | nothing |
 | Dislike | `Dislikes/{id}_{uid}` + the count, one batch (2 writes) | nothing |
 | Vote | `Votes/{id}` (+ the anonymous dislike for a downvote) | the matchup's counts |
 | Comment | a key in the latest `CommentPages` doc | post `commentCount` and `preview`, the live matchup's copy |
 | Accept a friend | delete the `FriendRequests` doc | `Friends` docs on both sides, both friend counts |
-| Create a friend prompt | `FriendPrompts/{id}` (before, after, badge, no audience) | `audience` from the creator's friends |
+| Create a friend prompt | `FriendPrompts/{id}` (before, after, creator, no audience) | `audience` from the creator's friends |
 | A prompt ends | | its `Results` pages, `final` stats in each author's `History` |
 
 Until the project is on Blaze, functions don't run in production. The app can batch its own `History` write, but counts and streaks stay on sample data, because client-written counts can be edited by anyone.
@@ -253,7 +265,7 @@ Until the project is on Blaze, functions don't run in production. The app can ba
 ## Rules in plain words
 
 - `Users/{uid}`, `CommentPages`, daily `MatchUps`, daily `Results`: any signed-in user can read.
-- `FriendPrompts`, their `Results`, and matchups for friend prompts: only uids in `audience`. The creator can create a friend prompt with themselves as creator and no `audience`, and can end or remove it; nobody else writes it.
+- `FriendPrompts`, their `Results`, and matchups for friend prompts: only uids in `audience`. The creator can create a friend prompt with themselves as `creator` and no `audience`, and can end or remove it; nobody else writes it.
 - `FriendView`, `History`, `Posts`: the owner, or a friend. Friendship is "`Users/{them}/Friends/{me}` exists". Each such check inside a rule is billed as one read.
 - `Private`, `FriendRequests`, `Notifications`, `Friends`: the owner only. `Friends` docs are written only by the server.
 - Counts, stats, streaks, ranks and `MatchUps`: the server only, except `likedBy`, `counts.likes` and `counts.dislikes`, which signed-in users may change only as described under Likes and Dislikes. Updating them doesn't require being able to read the doc, so strangers can dislike anonymous answers.
