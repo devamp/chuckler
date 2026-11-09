@@ -97,7 +97,7 @@ All of this runs **server-side** (scheduled Cloud Functions at the checkpoints) 
 
 ## Prerequisites
 
-- **Friends lists by uid.** Friends lists store usernames while pending requests store uids, and usernames aren't guaranteed unique (signup's username check is commented out). Switch to uids before any friends-only feature.
+- **Friends lists by uid.** *Done in the emulator (slice 3):* `Friends` and `FriendRequests` by uid, requests by username or email, and a Friends screen on the Account tab. Still to do: friends who answered, friend streak standings, opening a friend's profile, and moving the Past feed popup off the old username lists on `Users`.
 - **One vote per user per matchup**, e.g. `Votes/{matchupId}_{uid}`, with totals derived from those. Firestore rules can allow create but not update, which enforces "votes are final" on the server.
 - **Blaze plan before launch.** Matchups, ranking, checkpoints and AI prompt generation all need Cloud Functions. At this scale usage should stay within the free quotas; set a budget alert.
 - **Moderation for user-generated content.** Friend-created prompts and answers need report, block and filtering to satisfy App Store Review guideline 1.2.

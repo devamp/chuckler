@@ -640,3 +640,204 @@ describe("comments", () => {
       "last": "c2"}));
   });
 });
+
+// ---- Slice 3: friends ------------------------------------------------------
+
+const crypto = require("crypto");
+
+/**
+ * The EmailRequests id for an email: SHA-256 hex of it, lowercased.
+ * @param {string} email
+ * @return {string}
+ */
+function emailHash(email) {
+  return crypto.createHash("sha256").update(email.trim().toLowerCase())
+      .digest("hex");
+}
+
+/**
+ * A Firestore client signed in as `uid` with an email on the token.
+ * @param {string} uid
+ * @param {string} email
+ * @return {object}
+ */
+function asWithEmail(uid, email) {
+  return env.authenticatedContext(uid, {email}).firestore();
+}
+
+/**
+ * A request card from `uid`.
+ * @param {string} uid
+ * @return {object}
+ */
+function card(uid) {
+  return {username: uid, photoUrl: "", sentAt: new Date()};
+}
+
+/**
+ * A Friends doc about `uid`.
+ * @param {string} uid
+ * @return {object}
+ */
+function friendDoc(uid) {
+  return {username: uid, photoUrl: "", since: new Date()};
+}
+
+/**
+ * The accepter's batch: both Friends docs, then the request goes.
+ * @param {object} db
+ * @param {string} me
+ * @param {string} them
+ * @param {string} requestPath
+ * @return {Promise}
+ */
+function accept(db, me, them, requestPath) {
+  const b = writeBatch(db);
+  b.set(doc(db, `Users/${me}/Friends/${them}`), friendDoc(them));
+  b.set(doc(db, `Users/${them}/Friends/${me}`), friendDoc(me));
+  b.delete(doc(db, requestPath));
+  return b.commit();
+}
+
+describe("friend requests by username", () => {
+  beforeEach(() => seed({"Users/carol": {username: "carol"}}));
+
+  it("allows a request as yourself with your real username", async () => {
+    await assertSucceeds(setDoc(
+        doc(as("bob"), "Users/alice/FriendRequests/bob"),
+        card("bob")));
+  });
+
+  it("refuses requests as someone else, with a fake name, or to yourself",
+      async () => {
+        await assertFails(setDoc(doc(as("bob"),
+            "Users/alice/FriendRequests/carol"), card("carol")));
+        await assertFails(setDoc(doc(as("bob"),
+            "Users/alice/FriendRequests/bob"), card("carol")));
+        await assertFails(setDoc(doc(as("bob"),
+            "Users/bob/FriendRequests/bob"), card("bob")));
+        await assertFails(setDoc(doc(as("bob"),
+            "Users/chuckler/FriendRequests/bob"), card("bob")));
+        await assertFails(setDoc(doc(as("bob"),
+            "Users/nobody/FriendRequests/bob"), card("bob")));
+      });
+
+  it("refuses a request when already friends", async () => {
+    await seed({"Users/alice/Friends/bob": friendDoc("bob")});
+    await assertFails(setDoc(doc(as("bob"), "Users/alice/FriendRequests/bob"),
+        card("bob")));
+  });
+
+  it("only the recipient reads; recipient or sender deletes", async () => {
+    await seed({"Users/alice/FriendRequests/bob": card("bob"),
+      "Users/alice/FriendRequests/carol": card("carol")});
+    await assertSucceeds(getDoc(doc(as("alice"),
+        "Users/alice/FriendRequests/bob")));
+    await assertFails(getDoc(doc(as("bob"),
+        "Users/alice/FriendRequests/bob")));
+    await assertFails(deleteDoc(doc(as("carol"),
+        "Users/alice/FriendRequests/bob")));
+    await assertSucceeds(deleteDoc(doc(as("bob"),
+        "Users/alice/FriendRequests/bob")));
+    await assertSucceeds(deleteDoc(doc(as("alice"),
+        "Users/alice/FriendRequests/carol")));
+  });
+});
+
+describe("accepting and removing friends", () => {
+  beforeEach(() => seed({"Users/carol": {username: "carol"}}));
+
+  it("accepts a username request in one batch", async () => {
+    await seed({"Users/alice/FriendRequests/bob": card("bob")});
+    await assertSucceeds(accept(as("alice"), "alice", "bob",
+        "Users/alice/FriendRequests/bob"));
+    await assertSucceeds(getDoc(doc(as("bob"), "Users/bob/Friends/alice")));
+  });
+
+  it("accepts an email request in one batch", async () => {
+    const h = emailHash("Alice@Example.com");
+    await seed({[`EmailRequests/${h}/From/bob`]: card("bob")});
+    await assertSucceeds(accept(asWithEmail("alice", "alice@example.com"),
+        "alice", "bob", `EmailRequests/${h}/From/bob`));
+  });
+
+  it("refuses making friends without a request", async () => {
+    const db = as("alice");
+    await assertFails(setDoc(doc(db, "Users/bob/Friends/alice"),
+        friendDoc("alice")));
+    await assertFails(setDoc(doc(db, "Users/alice/Friends/bob"),
+        friendDoc("bob")));
+    // a request to someone else doesn't count
+    await seed({"Users/carol/FriendRequests/bob": card("bob")});
+    await assertFails(setDoc(doc(db, "Users/bob/Friends/alice"),
+        friendDoc("alice")));
+  });
+
+  it("the sender can't accept their own request", async () => {
+    await seed({"Users/alice/FriendRequests/bob": card("bob")});
+    await assertFails(setDoc(doc(as("bob"), "Users/alice/Friends/bob"),
+        friendDoc("bob")));
+    await assertFails(setDoc(doc(as("bob"), "Users/bob/Friends/alice"),
+        friendDoc("alice")));
+  });
+
+  it("refuses fake names on Friends docs", async () => {
+    await seed({"Users/alice/FriendRequests/bob": card("bob")});
+    await assertFails(setDoc(doc(as("alice"), "Users/bob/Friends/alice"),
+        friendDoc("carol")));
+  });
+
+  it("only the owner reads friends; either side unfriends", async () => {
+    await seed({"Users/alice/Friends/bob": friendDoc("bob"),
+      "Users/bob/Friends/alice": friendDoc("alice")});
+    await assertSucceeds(getDoc(doc(as("alice"), "Users/alice/Friends/bob")));
+    await assertFails(getDoc(doc(as("carol"), "Users/alice/Friends/bob")));
+    await assertFails(deleteDoc(doc(as("carol"), "Users/alice/Friends/bob")));
+    await assertSucceeds(deleteDoc(doc(as("bob"), "Users/alice/Friends/bob")));
+    await assertSucceeds(deleteDoc(doc(as("bob"), "Users/bob/Friends/alice")));
+  });
+
+  it("friends docs can't be edited", async () => {
+    await seed({"Users/alice/Friends/bob": friendDoc("bob")});
+    await assertFails(updateDoc(doc(as("alice"), "Users/alice/Friends/bob"),
+        {username: "x"}));
+  });
+});
+
+describe("friend requests by email", () => {
+  const h = emailHash("alice@example.com");
+
+  it("anyone can send one with their real username", async () => {
+    await assertSucceeds(setDoc(doc(as("bob"), `EmailRequests/${h}/From/bob`),
+        card("bob")));
+    await assertFails(setDoc(doc(as("bob"), `EmailRequests/${h}/From/carol`),
+        card("carol")));
+    await assertFails(setDoc(doc(as("bob"), `EmailRequests/${h}/From/bob`),
+        card("alice")));
+  });
+
+  it("not to your own email", async () => {
+    await assertFails(setDoc(doc(asWithEmail("alice", "alice@example.com"),
+        `EmailRequests/${h}/From/alice`), card("alice")));
+  });
+
+  it("only the email's owner reads them; the sender can't", async () => {
+    await seed({[`EmailRequests/${h}/From/bob`]: card("bob")});
+    await assertSucceeds(getDocs(collection(
+        asWithEmail("alice", "ALICE@example.com"), `EmailRequests/${h}/From`)));
+    await assertFails(getDoc(doc(asWithEmail("carol", "carol@example.com"),
+        `EmailRequests/${h}/From/bob`)));
+    await assertFails(getDoc(doc(as("bob"), `EmailRequests/${h}/From/bob`)));
+  });
+
+  it("the owner declines and the sender cancels", async () => {
+    await seed({[`EmailRequests/${h}/From/bob`]: card("bob"),
+      [`EmailRequests/${h}/From/carol`]: card("carol")});
+    await assertFails(deleteDoc(doc(asWithEmail("dan", "dan@example.com"),
+        `EmailRequests/${h}/From/bob`)));
+    await assertSucceeds(deleteDoc(doc(asWithEmail("alice",
+        "alice@example.com"), `EmailRequests/${h}/From/bob`)));
+    await assertSucceeds(deleteDoc(doc(as("carol"),
+        `EmailRequests/${h}/From/carol`)));
+  });
+});

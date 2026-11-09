@@ -9,6 +9,10 @@ class SessionService with ChangeNotifier {
   String? get logTime => _loginTime;
   DbUser? get loggedInUser => _loggedInUser;
 
+  /// The signed-in account's email, for finding friend requests sent to it.
+  /// Never shown to anyone else.
+  String? email;
+
   void setLoggedInUser(DbUser user){
     _loggedInUser = user;
     notifyListeners();

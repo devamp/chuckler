@@ -44,7 +44,7 @@ Users/{uid}                           ANYONE: { username, photoUrl }
   FriendView/profile                  FRIENDS + YOU: bio, stats, streak
   Private/account                     YOU: age, notification settings, push tokens, blocked uids
   Friends/{friendUid}                 YOU: { username, photoUrl, since }
-  FriendRequests/{fromUid}            YOU: { username, photoUrl, sentAt }
+  FriendRequests/{fromUid}            YOU: { username, photoUrl, sentAt }   sent by username
   History/{yyyy-MM}                   FRIENDS + YOU: your answers that month
   Notifications/{id}                  YOU
 
@@ -61,6 +61,8 @@ Posts/{postId}                        an answer; FRIENDS + YOU (author)
 
 MatchUps/{id}                         ANY SIGNED-IN USER: two answers, anonymous
   Private/owners                      SERVER ONLY: which uid wrote each answer
+
+EmailRequests/{emailHash}/From/{uid}  THAT EMAIL'S OWNER: a friend request sent by email
 
 Votes/{matchupId}_{uid}               one per user per matchup; create only
 Dislikes/{targetId}_{uid}             one per user per answer or prompt; readable only by its creator
@@ -252,7 +254,8 @@ To dislike, the app writes one batch:
 | Dislike | `Dislikes/{id}_{uid}` + the count, one batch (2 writes) | nothing |
 | Vote | `Votes/{id}` (+ the anonymous dislike for a downvote) | the matchup's counts |
 | Comment | a key in the latest `CommentPages` doc | post `commentCount` and `preview`, the live matchup's copy |
-| Accept a friend | delete the `FriendRequests` doc | `Friends` docs on both sides, both friend counts |
+| Send a friend request | `FriendRequests/{me}` under them (by username), or `EmailRequests/{hash}/From/{me}` (by email) | |
+| Accept a friend | `Friends` docs on both sides + delete the request, one batch | |
 | Create a friend prompt | `FriendPrompts/{id}` (before, after, creator, no audience) | `audience` from the creator's friends |
 | A prompt ends | | its `Results` pages, `final` stats in each author's `History` |
 
@@ -269,7 +272,8 @@ Until the project is on Blaze, functions don't run in production. The app can ba
 - `Users/{uid}`, `CommentPages`, daily `MatchUps`, daily `Results`: any signed-in user can read.
 - `FriendPrompts`, their `Results`, and matchups for friend prompts: only uids in `audience`. The creator can create a friend prompt with themselves as `creator` and no `audience`, and can end or remove it; nobody else writes it.
 - `FriendView`, `History`, `Posts`: the owner, or a friend. Friendship is "`Users/{them}/Friends/{me}` exists". Each such check inside a rule is billed as one read.
-- `Private`, `FriendRequests`, `Notifications`, `Friends`: the owner only. `Friends` docs are written only by the server.
+- `Private`, `FriendRequests`, `Notifications`, `Friends`: the owner only. A `Friends` doc about you can be written into someone else's list only while they have a request from you waiting (the accepter's batch). Either side can delete (unfriend).
+- `EmailRequests/{hash}`: only the user whose own email hashes to `hash` can read or decline; anyone can send one under their own uid.
 - Counts, stats, streaks, ranks and `MatchUps`: the server only, except `likedBy`, `counts.likes` and `counts.dislikes`, which signed-in users may change only as described under Likes and Dislikes. Updating them doesn't require being able to read the doc, so strangers can dislike anonymous answers.
 - `Dislikes/{id}_{uid}`: only that uid can read, create or delete it.
 - `Votes`: create your own, never change.
@@ -306,7 +310,13 @@ Slice 2 (Home voting and answer comments):
 - `onVoteCreated` counts the vote on the matchup's answer. Until ranking checkpoints exist it also adds to the posts' `counts.votes` and `counts.wins` (and `createMatchup` to `counts.matchups`), so the Create tab's answer stats are live; `rank` stays 0.
 - `Posts/{postId}/CommentPages/{n}` (pages "0", "1", …) with a `last` field naming the comment just added, which the rule checks. `onCommentPageWritten` keeps `commentCount` and `preview` on the post and its active matchups.
 
-Not live yet: ranking and checkpoints, friends by uid, friend prompts, Past results, prompt dislikes, undoing a dislike.
+Slice 3 (friends):
+- Mutual friends by uid: `Users/{uid}/Friends/{friendUid}` on both sides, written by the accepter in one batch with the request's deletion. The rules allow it only while the request exists, so no Cloud Function is needed (works on Spark). The friend count is a `count()` query; nothing is stored.
+- Requests by username: `Users/{them}/FriendRequests/{me}`, after looking the name up in `Usernames`.
+- Requests by email: `EmailRequests/{emailHash}/From/{me}`. `emailHash` is SHA-256 hex of the trimmed, lowercased address; the rules compute the same from the signed-in user's token (`hashing.sha256`), so only that email's owner reads them. The sender learns nothing about whether the email has an account, and the database never stores addresses.
+- Uids never appear in the UI: people search by username or email.
+
+Not live yet: ranking and checkpoints, friends who answered and friend streak standings, friend profiles, friend prompts, Past results, prompt dislikes, undoing a dislike.
 
 ## Before the new layout
 

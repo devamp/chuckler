@@ -28,7 +28,7 @@ flutter run --dart-define=USE_EMULATOR=true --dart-define=EMULATOR_HOST=192.168.
 flutter run
 ```
 
-Firebase emulators (auth 9099, firestore 8080, functions 5001, storage 9199, UI enabled). Seed data is in `fb_em_data/`: the Chuckler account, eight test accounts (`ava`, `ben`, `cleo`, `dev`, `eli`, `fay`, `gus`, `hal` `@chuckler.test`, password in `functions/scripts/seed.js`), prompt days around the day it was made, and every test account's answers to that day's prompts, paired into matchups by `createMatchup`. Run the seed on fresh emulators with functions running, then export:
+Firebase emulators (auth 9099, firestore 8080, functions 5001, storage 9199, UI enabled). Seed data is in `fb_em_data/`: the Chuckler account, eight test accounts (`ava`, `ben`, `cleo`, `dev`, `eli`, `fay`, `gus`, `hal` `@chuckler.test`, password in `functions/scripts/seed.js`; ava, ben and cleo are friends, and ava has a username request from dev and an email request from eli), prompt days around the day it was made, and every test account's answers to that day's prompts, paired into matchups by `createMatchup`. Run the seed on fresh emulators with functions running, then export:
 
 ```bash
 firebase emulators:start --import=fb_em_data [--export-on-exit=fb_em_data]
@@ -69,6 +69,7 @@ Tests run without Firebase: `test/data/` covers the query functions against `fak
 **Data layer: two tiers**
 - Remote: `lib/data/` holds top-level async Firestore functions grouped by feature: `prompts.dart`, `posts.dart`, `users.dart`, `friends.dart`, `comments.dart`. Each takes a `FirebaseFirestore` argument. Firestore collections: `Users`, `Posts`, `Comments`, `PromptDays`, `MatchUps`, `Notifications`.
 - Home voting is live on the new layout (`docs/data-model.md`, "Live in the emulator", slice 2): `lib/data/matchups.dart` reads today's `MatchUps` and writes `Votes` (plus an anonymous `Dislikes` doc for a downvote); `lib/data/comments.dart` reads and adds answer comments in `Posts/{id}/CommentPages`. `sample_matchups.dart` is only for tests.
+- Friends are live too (slice 3): `lib/data/friends.dart` sends requests by username (`Users/{them}/FriendRequests/{me}`) or email (`EmailRequests/{sha256(email)}/From/{me}`, readable only by that email's owner), and accepting writes both `Users/{uid}/Friends` docs in one batch. `FriendsService` backs the Friends screen (`lib/pages/friends/`), opened from the Account tab's Friends count. Uids are internal: the UI only shows usernames.
 - The Create tab is live on the new layout (`docs/data-model.md`, "Live in the emulator"). Prompt days roll over at 05:00 UTC (`lib/data/prompt_day.dart`); `getDailyPrompts` reads `PromptDays/{dayId}/Prompts`; `createPost` batches the post with the user's `History/{yyyy-MM}` entry; login reads today's answers from History; signup (`registerNewUser` in `lib/data/users.dart`) claims `Usernames/{name}` in a transaction. `lib/data/prompt_stats.dart` reads prompt counts, likes and the streak; sample stats are used only for the sample prompts debug builds add when no real prompt is live. Answers to sample prompts stay on the phone.
 - When today has no prompt, `getDailyPrompts` returns a placeholder prompt (`awaitingPrompt()`, checked with `isAwaitingPrompt`). It has a null date so the Isar cache never serves it, and the create page refuses to post to it.
 - Local: Isar (the community fork, `isar_community` 3.4.x, which supports Swift Package Manager) models in `lib/database/models.dart` (`DbPost`, `DbPrompt`, `DbUser`, `DbComment`, `DbNotification`). `models.g.dart` is generated, so don't hand-edit it. Fetched Firestore data is mapped into these models, cached in Isar, and pushed into the `lib/state/` services for the UI.
@@ -107,7 +108,9 @@ Planned features and design decisions (prompt types, Create-tab swiping, Home sw
 - The repo's functions are on Node 20, but the deployed `checkUsername` is still Node 18.
 - All iOS plugins are Swift packages now, but `ios/` still has CocoaPods integration (`Podfile`, `Pods/`, includes in `Flutter/Debug.xcconfig` and `Release.xcconfig`). Flutter warns about it on every build; it is harmless but slows builds.
 - Logout (`lib/pages/accountpage/settings.dart`) navigates to `'/login'`, which is not a defined route, so the default route builds a second `MyApp` inside the first.
-- Logout clears only prompts and the user's posts; `SessionService` and `FeedService` keep the previous user's state.
+- Logout clears prompts, posts, Create, voting and friends state; `SessionService` and `FeedService` keep the previous user's state.
+- The old username lists on `Users` (`friendsList`, `pendingFriendsList`) and the legacy `friend()` in `lib/data/friends.dart` still back the Past feed's profile popup; move it to the new friends and drop them.
+- Emails aren't verified at signup, so someone could register with another person's email and receive friend requests sent to it. Require verification before reading `EmailRequests`.
 - More suspected bugs are recorded as `TODO(bug)` in `test/data/` and `test/state/`.
 - The repo's Firestore rules are explicit for slice 1 but still let any signed-in user edit other users' `Users` docs and posts (legacy friend requests and voting need it); tighten them in the friends and voting slices. Production still runs the old open rules: nothing has been deployed.
 - Storage rules deny everything.

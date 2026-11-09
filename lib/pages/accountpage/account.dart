@@ -9,6 +9,9 @@ import '../../state/session_service.dart';
 import '../../Theme/theme.dart';
 import '../../database/models.dart';
 import 'account_posts.dart';
+import '../friends/friends_page.dart';
+import '../../state/friends_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart' show FirebaseFirestore;
 
 class Account extends StatefulWidget {
   const Account({super.key});
@@ -96,10 +99,10 @@ class _AccountState extends State<Account> {
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22),
             ),
             const SizedBox(height: 15),
-            const Row(
+            Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Column(
+                const Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -117,27 +120,10 @@ class _AccountState extends State<Account> {
                     ),
                   ],
                 ),
-                SizedBox(width: 40),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      '4.2K',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                    Text(
-                      'Friends',
-                      style: TextStyle(fontSize: 16, color: Colors.amber),
-                    ),
-                  ],
-                ),
-                SizedBox(width: 40),
-                Column(
+                const SizedBox(width: 40),
+                const FriendsStat(),
+                const SizedBox(width: 40),
+                const Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -247,6 +233,71 @@ class _AccountState extends State<Account> {
           icon: Icon(Icons.verified_rounded),
         ),
       ],
+    );
+  }
+}
+
+/// The Friends count in the Account header, with a badge for waiting
+/// requests. Tap to open the Friends screen. Loads friends the first time.
+class FriendsStat extends StatefulWidget {
+  const FriendsStat({super.key});
+
+  @override
+  State<FriendsStat> createState() => _FriendsStatState();
+}
+
+class _FriendsStatState extends State<FriendsStat> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final session = Provider.of<SessionService>(context, listen: false);
+      final uid = session.loggedInUser?.uid;
+      if (uid == null) return;
+      Provider.of<FriendsService>(context, listen: false).load(
+          Provider.of<FirebaseFirestore>(context, listen: false),
+          uid,
+          session.email);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final friends = Provider.of<FriendsService>(context);
+    return Tooltip(
+      message: 'Friends',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (context) => const FriendsPage())),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          child: Badge(
+            isLabelVisible: friends.pendingCount > 0,
+            label: Text('${friends.pendingCount}'),
+            backgroundColor: Colors.redAccent,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  friends.loaded ? '${friends.friendCount}' : '–',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const Text(
+                  'Friends',
+                  style: TextStyle(fontSize: 16, color: Colors.amber),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

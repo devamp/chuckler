@@ -38,6 +38,7 @@ class _LoginFormState extends State<LoginForm> {
       UserCredential result = await _auth.signInWithEmailAndPassword(
           email: email, password: password);
       user = result.user!;
+      Provider.of<SessionService>(context, listen: false).email = user.email;
       await setupUserSession(context, user.uid);
       return true;
     } catch (e) {

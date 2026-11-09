@@ -4,6 +4,9 @@
 //     TEST_PASSWORD) with their Users, Usernames, FriendView and Private docs
 //   - PromptDays for yesterday, today and the next 2 days (prompt days roll
 //     over at 05:00 UTC), 3 Chuckler prompts each
+//   - friends: ava, ben and cleo are friends with each other; dev has sent
+//     ava a request by username and eli one to ava's email, so ava has 2
+//     friends and 2 requests waiting
 //   - answers from every test account to today's prompts, so there is
 //     something to vote on. With the functions emulator running, the
 //     createMatchup function pairs them into matchups (4 per prompt).
@@ -30,6 +33,7 @@
 
 const {initializeApp} = require("firebase-admin/app");
 const {getAuth} = require("firebase-admin/auth");
+const crypto = require("crypto");
 const {getFirestore, Timestamp} = require("firebase-admin/firestore");
 const {
   promptDayId, promptDayStart, promptDayEnd, addDays,
@@ -193,6 +197,24 @@ async function main() {
     });
   });
 
+  // Friends, laid out like lib/data/friends.dart.
+  const byName = Object.fromEntries(TEST_USERS.map((u) => [u.username, u]));
+  const now = Timestamp.now();
+  const friendPairs = [["ava", "ben"], ["ava", "cleo"], ["ben", "cleo"]];
+  for (const [a, b] of friendPairs) {
+    for (const [me, them] of [[byName[a], byName[b]], [byName[b], byName[a]]]) {
+      batch.set(db.doc(`Users/${me.uid}/Friends/${them.uid}`),
+          {username: them.username, photoUrl: "", since: now});
+    }
+  }
+  const card = (u) => ({username: u.username, photoUrl: "", sentAt: now});
+  batch.set(db.doc(`Users/${byName.ava.uid}/FriendRequests/${byName.dev.uid}`),
+      card(byName.dev));
+  const avaEmailHash = crypto.createHash("sha256")
+      .update(byName.ava.email.toLowerCase()).digest("hex");
+  batch.set(db.doc(`EmailRequests/${avaEmailHash}/From/${byName.eli.uid}`),
+      card(byName.eli));
+
   await batch.commit();
 
   // Today's answers, written one at a time like the app's createPost (post
@@ -233,6 +255,8 @@ async function main() {
   console.log(`  prompt days ${days.join(", ")} (today is ${today})`);
   console.log(`  accounts ${TEST_USERS.map((u) => u.email).join(", ")} ` +
       `(password: ${TEST_PASSWORD})`);
+  console.log("  friends: ava, ben, cleo; ava has requests from dev " +
+      "(username) and eli (email)");
   console.log(`  ${answers} new answers to today's prompts`);
 }
 

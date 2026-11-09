@@ -96,6 +96,70 @@ service cloud.firestore {
         allow read, create, update: if isUser(uid);
         allow delete: if false;
       }
+
+      // Friend requests sent by username. Only the sender writes theirs,
+      // under their own uid; the recipient reads them and declines by
+      // deleting; the sender can cancel.
+      match /FriendRequests/{fromUid} {
+        allow read: if isUser(uid);
+        allow create: if isUser(fromUid) && fromUid != uid && uid != 'chuckler'
+            && exists(/databases/$(database)/documents/Users/$(uid))
+            && !exists(/databases/$(database)/documents/Users/$(uid)/Friends/$(fromUid))
+            && isRequestCard(fromUid);
+        allow delete: if isUser(uid) || isUser(fromUid);
+      }
+
+      // Mutual friends, one doc on each side. The accepter writes both in
+      // one batch, while a request from the other person still exists (the
+      // batch also deletes it; exists() sees the state before the batch).
+      // Either side can unfriend by deleting both.
+      match /Friends/{friendUid} {
+        allow read: if isUser(uid);
+        allow create: if friendCard(friendUid)
+            && ((isUser(uid) && requestFrom(friendUid))
+                || (isUser(friendUid) && requestFrom(uid)));
+        allow delete: if isUser(uid) || isUser(friendUid);
+      }
+    }
+
+    // The signed-in user's email as EmailRequests ids it: SHA-256 hex of the
+    // lowercased address. The database never holds the address itself.
+    function myEmailHash() {
+      return hashing.sha256(string(request.auth.token.get('email', '')).lower())
+          .toHexString().lower();
+    }
+
+    // A request from `fromUid` to the signed-in user, by username or email
+    function requestFrom(fromUid) {
+      return exists(/databases/$(database)/documents/Users/$(request.auth.uid)/FriendRequests/$(fromUid))
+          || exists(/databases/$(database)/documents/EmailRequests/$(myEmailHash())/From/$(fromUid));
+    }
+
+    // A request doc carrying the sender's real username
+    function isRequestCard(fromUid) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['username', 'photoUrl', 'sentAt'])
+          && d.username == get(/databases/$(database)/documents/Users/$(fromUid)).data.username
+          && d.get('photoUrl', '') is string;
+    }
+
+    // A Friends doc naming the friend by their real username
+    function friendCard(friendUid) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['username', 'photoUrl', 'since'])
+          && d.username == get(/databases/$(database)/documents/Users/$(friendUid)).data.username
+          && d.get('photoUrl', '') is string;
+    }
+
+    // ---- Friend requests by email --------------------------------------
+
+    // Sent to an email's hash, so the sender learns nothing about whether an
+    // account has that email. Only the owner of that email can read them.
+    match /EmailRequests/{hash}/From/{fromUid} {
+      allow read: if signedIn() && hash == myEmailHash();
+      allow create: if isUser(fromUid) && hash != myEmailHash()
+          && isRequestCard(fromUid);
+      allow delete: if (signedIn() && hash == myEmailHash()) || isUser(fromUid);
     }
 
     // ---- Posts (answers) -----------------------------------------------

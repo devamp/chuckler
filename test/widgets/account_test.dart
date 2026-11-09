@@ -5,7 +5,11 @@
 import 'package:chuckler/CustomReusableWidgets/profile_photo.dart';
 import 'package:chuckler/database/models.dart';
 import 'package:chuckler/pages/accountpage/account.dart';
+import 'package:chuckler/pages/friends/friends_page.dart';
+import 'package:chuckler/state/friends_service.dart';
 import 'package:chuckler/state/session_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -46,8 +50,12 @@ void main() {
 
         final session = SessionService()
           ..setLoggedInUser(DbUser('u1', username, 0, 0, ''));
-        await tester.pumpWidget(ChangeNotifierProvider.value(
-          value: session,
+        await tester.pumpWidget(MultiProvider(
+          providers: [
+            ChangeNotifierProvider.value(value: session),
+            ChangeNotifierProvider.value(value: FriendsService()),
+            Provider<FirebaseFirestore>.value(value: FakeFirebaseFirestore()),
+          ],
           child: const MaterialApp(home: Account()),
         ));
         await tester.pump();
@@ -57,4 +65,38 @@ void main() {
       });
     }
   }
+
+  testWidgets('the Friends count shows requests and opens the Friends screen',
+      (tester) async {
+    tester.view.physicalSize = const Size(393, 852) * 3;
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    final firestore = FakeFirebaseFirestore();
+    await tester.runAsync(() async {
+      await firestore.doc('Users/u1/Friends/u2').set({'username': 'ben'});
+      await firestore.doc('Users/u1/FriendRequests/u3').set({'username': 'dev'});
+    });
+    final session = SessionService()
+      ..setLoggedInUser(DbUser('u1', 'ava', 0, 0, ''));
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: session),
+        ChangeNotifierProvider.value(value: FriendsService()),
+        Provider<FirebaseFirestore>.value(value: firestore),
+      ],
+      child: const MaterialApp(home: Account()),
+    ));
+    await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 50)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Friends'), findsOneWidget);
+    // 1 friend, and a badge for 1 waiting request
+    final badge = tester.widget<Badge>(find.byType(Badge));
+    expect(badge.isLabelVisible, isTrue);
+    expect((badge.label as Text).data, '1');
+    expect(find.text('1'), findsNWidgets(2));
+    await tester.tap(find.byTooltip('Friends'));
+    await tester.pumpAndSettle();
+    expect(find.byType(FriendsPage), findsOneWidget);
+  });
 }
