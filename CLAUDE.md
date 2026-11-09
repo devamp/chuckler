@@ -20,7 +20,9 @@ dart run build_runner build             # --delete-conflicting-outputs is ignore
 
 # Develop against local emulators (the normal way)
 flutter run --dart-define=USE_EMULATOR=true
-# Physical iPhone: point it at the Mac's LAN IP
+# Physical iPhone: point it at the Mac's LAN IP (`ipconfig getifaddr en0`), not
+# 127.0.0.1, which on the phone means the phone. The emulators listen on all
+# interfaces (firebase.json), and Info.plist allows local-network HTTP.
 flutter run --dart-define=USE_EMULATOR=true --dart-define=EMULATOR_HOST=192.168.1.x
 # Without the flag the app talks to PRODUCTION Firebase
 flutter run

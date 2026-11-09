@@ -81,9 +81,13 @@ class IsarService {
   }
 
   Future<List<DbPrompt>> getDailyPromptsFromDB() async {
+    final dayId = promptDayId(DateTime.now().toUtc());
+    // promptDateId is the day id in the current layout, which leaves out
+    // prompts cached under the old layout's random PromptDays ids
     final prompts = await db.dbPrompts
         .filter()
-        .dateEqualTo(promptDayId(DateTime.now().toUtc()))
+        .dateEqualTo(dayId)
+        .promptDateIdEqualTo(dayId)
         .findAll();
     return prompts;
   }
