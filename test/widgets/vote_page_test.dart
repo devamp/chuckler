@@ -33,8 +33,15 @@ void main() {
 
     voting = VotingService();
     firestore = FakeFirebaseFirestore();
-    await tester.runAsync(
-        () => seedMatchups(firestore, sampleMatchups(), posts: posts));
+    await tester.runAsync(() async {
+      await seedMatchups(firestore, sampleMatchups(), posts: posts);
+      await firestore.doc('MatchUps/sample-1/Authors/names').set({
+        'answers': [
+          {'username': 'skyler', 'photoUrl': ''},
+          {'username': 'marco', 'photoUrl': ''},
+        ],
+      });
+    });
     final session = SessionService()
       ..setLoggedInUser(DbUser('me', 'caden', 0, 0, ''));
     await tester.pumpWidget(MultiProvider(
@@ -201,6 +208,49 @@ void main() {
     // skipped matchups come back, since there's no vote on them
     expect(voting.index, 0);
     expect(voting.length, 5);
+  });
+
+  testWidgets('authors stay hidden until you vote, then both show',
+      (tester) async {
+    await pumpVotePage(tester);
+    expect(find.text('skyler'), findsNothing);
+    expect(find.text('marco'), findsNothing);
+
+    await tester.drag(
+        answer('Anyone know which button is autopilot?'), const Offset(300, 0));
+    await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 50)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('skyler'), findsOneWidget);
+    expect(find.text('marco'), findsOneWidget);
+  });
+
+  testWidgets('a downvote reveals the authors too', (tester) async {
+    await pumpVotePage(tester);
+    await tester.drag(
+        answer('Okay, this is my first time without the simulator'),
+        const Offset(-300, 0));
+    await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 50)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('skyler'), findsOneWidget);
+    expect(find.text('marco'), findsOneWidget);
+  });
+
+  testWidgets('authors stay when you come back to a voted matchup',
+      (tester) async {
+    await pumpVotePage(tester);
+    await tester.drag(
+        answer('Anyone know which button is autopilot?'), const Offset(300, 0));
+    await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 50)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Next'));
+    await tester.pumpAndSettle();
+    expect(find.text('skyler'), findsNothing);
+
+    await tester.tap(find.byTooltip('Previous matchup'));
+    await tester.pumpAndSettle();
+    expect(find.text('skyler'), findsOneWidget);
   });
 
   testWidgets('a short drag does not vote', (tester) async {
@@ -372,11 +422,14 @@ void main() {
 
   testWidgets('renders without overflow on an iPhone SE after voting',
       (tester) async {
+    await loadRealFonts();
     await pumpVotePage(tester, size: const Size(375, 667));
     await tester.drag(
         answer('Anyone know which button is autopilot?'), const Offset(300, 0));
+    await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 50)));
     await tester.pumpAndSettle();
 
+    expect(find.text('skyler'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

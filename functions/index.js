@@ -9,8 +9,9 @@ const db = getFirestore();
 
 
 // Matchups pair two answers to the same prompt for voting. They carry no
-// uids or usernames, so vote cards are anonymous; Private/owners keeps the
-// authors for the server. See docs/data-model.md (MatchUps).
+// uids or usernames, so vote cards are anonymous until you vote: then
+// Authors/names (readable only by voters) shows who wrote each answer.
+// Private/owners keeps the uids for the server. See docs/data-model.md.
 
 /**
  * One side of a new matchup.
@@ -51,6 +52,9 @@ exports.createMatchup = onDocumentCreated("Posts/{postId}", async (event) => {
       const prompt = (await tx.get(db.doc(
           `PromptDays/${promptDateId}/Prompts/${promptId}`))).data() || {};
       const otherPost = other.data();
+      // the authors' photos, for the names shown after someone votes
+      const [otherUser, user] = await Promise.all([otherPost.uid, post.uid]
+          .map((uid) => tx.get(db.collection("Users").doc(uid))));
 
       const matchupRef = db.collection("MatchUps").doc();
       // the waiting post goes on top, the new one below
@@ -67,6 +71,13 @@ exports.createMatchup = onDocumentCreated("Posts/{postId}", async (event) => {
       });
       tx.set(matchupRef.collection("Private").doc("owners"),
           {uids: [otherPost.uid, post.uid]});
+      // who wrote each answer, readable only by people who voted on it
+      tx.set(matchupRef.collection("Authors").doc("names"), {answers: [
+        {username: otherPost.username || "",
+          photoUrl: otherUser.data()?.profileImage || ""},
+        {username: post.username || "",
+          photoUrl: user.data()?.profileImage || ""},
+      ]});
       for (const ref of [other.ref, postRef]) {
         tx.update(ref, {
           "matched": true,

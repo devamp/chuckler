@@ -3,7 +3,8 @@ import 'prompt_day.dart';
 
 // Swipe voting on the Home tab, on the layout in docs/data-model.md
 // (MatchUps, Votes, Dislikes). Matchups are written by the createMatchup
-// Cloud Function and carry no uids or usernames, so vote cards are anonymous.
+// Cloud Function and carry no uids or usernames, so vote cards are anonymous
+// until the user votes; then getMatchupAuthors reveals who wrote each one.
 //
 // Still to come:
 //   - ranking: order matchups by score instead of age, once checkpoints
@@ -113,6 +114,40 @@ class Matchup {
     final total = answers[0].wins + answers[1].wins;
     if (total == 0) return 0;
     return (answers[card].wins * 100 / total).round();
+  }
+}
+
+/// Who wrote one answer, shown once the user has voted on the matchup
+class MatchupAuthor {
+  final String username;
+
+  /// '' when the author has no photo
+  final String photoUrl;
+
+  const MatchupAuthor(this.username, this.photoUrl);
+}
+
+/// Both answers' authors, in card order, from MatchUps/{id}/Authors/names.
+/// Only readable after the user's vote is saved; null if it's missing or
+/// the read is refused.
+Future<List<MatchupAuthor>?> getMatchupAuthors(
+    FirebaseFirestore firestore, String matchupId) async {
+  try {
+    final doc = await firestore
+        .collection('MatchUps')
+        .doc(matchupId)
+        .collection('Authors')
+        .doc('names')
+        .get();
+    final answers = (doc.data()?['answers'] as List?) ?? const [];
+    if (answers.length != 2) return null;
+    return [
+      for (final a in answers)
+        MatchupAuthor(
+            (a as Map)['username'] as String? ?? '', a['photoUrl'] as String? ?? ''),
+    ];
+  } catch (e) {
+    return null;
   }
 }
 

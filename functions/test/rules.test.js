@@ -841,3 +841,32 @@ describe("friend requests by email", () => {
         `EmailRequests/${h}/From/carol`)));
   });
 });
+
+describe("matchup authors", () => {
+  beforeEach(async () => {
+    await seedMatchup();
+    await seed({[`${MATCHUP}/Authors/names`]: {answers: [
+      {username: "bob", photoUrl: ""}, {username: "carol", photoUrl: ""},
+    ]}});
+  });
+
+  it("hidden until you vote, then readable", async () => {
+    await assertFails(getDoc(doc(as("alice"), `${MATCHUP}/Authors/names`)));
+    await assertSucceeds(setDoc(doc(as("alice"), "Votes/m1_alice"),
+        vote("alice")));
+    await assertSucceeds(getDoc(doc(as("alice"), `${MATCHUP}/Authors/names`)));
+  });
+
+  it("another matchup's vote doesn't count", async () => {
+    await seed({"Votes/m2_alice": vote("alice", {matchupId: "m2"})});
+    await assertFails(getDoc(doc(as("alice"), `${MATCHUP}/Authors/names`)));
+    const db = env.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, `${MATCHUP}/Authors/names`)));
+  });
+
+  it("nobody writes it", async () => {
+    await seed({"Votes/m1_alice": vote("alice")});
+    await assertFails(setDoc(doc(as("alice"), `${MATCHUP}/Authors/names`),
+        {answers: []}));
+  });
+});

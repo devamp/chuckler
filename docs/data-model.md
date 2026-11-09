@@ -60,6 +60,7 @@ Posts/{postId}                        an answer; FRIENDS + YOU (author)
   CommentPages/{n}                    ANY SIGNED-IN USER: ~200 comments per page
 
 MatchUps/{id}                         ANY SIGNED-IN USER: two answers, anonymous
+  Authors/names                       VOTERS ON THIS MATCHUP: who wrote each answer
   Private/owners                      SERVER ONLY: which uid wrote each answer
 
 EmailRequests/{emailHash}/From/{uid}  THAT EMAIL'S OWNER: a friend request sent by email
@@ -197,6 +198,7 @@ answers: [
 ```
 
 - No uids or usernames, so voting is anonymous and renames never touch matchups. `Private/owners` holds the uids for the server (pairing, notifications).
+- **Authors are revealed after you vote.** `Authors/names` (`answers: [{username, photoUrl}, …]`, card order) is written by `createMatchup` and readable only when `Votes/{matchupId}_{you}` exists, so the cards show both authors once your vote (win or downvote) is saved. One read per vote.
 - The `postId` lets the app open an answer's comments, but strangers can't read `Posts/{id}`, so it never leads to the author.
 - `preview` copies each answer's latest comments, so the preview after voting costs no reads. When someone comments, a function updates the post and the matchup the answer is currently in (usually one).
 - Pair posts in a transaction, so two posts created together can't claim the same unmatched post.

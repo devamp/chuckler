@@ -2,8 +2,9 @@ import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
 import '../../CustomReusableWidgets/segment_chip.dart';
 import '../../data/matchups.dart';
+import '../createpage/create_stats.dart';
 
-/// One answer in a matchup, without its author. Swipe right to pick it as the winner, left to
+/// One answer in a matchup. Its author shows only after the user votes. Swipe right to pick it as the winner, left to
 /// downvote it. After the user votes it shows the results instead.
 class VoteCard extends StatefulWidget {
   final MatchupAnswer answer;
@@ -12,6 +13,9 @@ class VoteCard extends StatefulWidget {
 
   /// null until the user has voted on this matchup
   final MatchupVote? myVote;
+
+  /// who wrote this answer; known only after the user votes
+  final MatchupAuthor? author;
   final int card;
   final int pickPercent;
   final void Function(VoteType type) onVote;
@@ -23,6 +27,7 @@ class VoteCard extends StatefulWidget {
     required this.segment,
     required this.accent,
     required this.myVote,
+    this.author,
     required this.card,
     required this.pickPercent,
     required this.onVote,
@@ -113,8 +118,12 @@ class _VoteCardState extends State<VoteCard>
                   children: [
                     Row(
                       children: [
-                        // no author: vote cards are anonymous
                         SegmentChip(segment: widget.segment),
+                        // anonymous until the user votes
+                        if (_voted && widget.author != null) ...[
+                          const SizedBox(width: 8),
+                          Expanded(child: _authorTag(widget.author!)),
+                        ],
                       ],
                     ),
                     Expanded(
@@ -159,6 +168,34 @@ class _VoteCardState extends State<VoteCard>
           ),
         ),
       ),
+    );
+  }
+
+  /// The author's icon and name, at the right of the top row
+  Widget _authorTag(MatchupAuthor author) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        Flexible(
+          child: Text(
+            author.username,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+                color: widget.accent,
+                fontFamily: 'OpenSans',
+                fontWeight: FontWeight.bold),
+          ),
+        ),
+        const SizedBox(width: 6),
+        author.photoUrl.isNotEmpty
+            ? CircleAvatar(
+                radius: 13, backgroundImage: NetworkImage(author.photoUrl))
+            : FriendAvatar(
+                username: author.username,
+                index: author.username.codeUnits.fold(0, (a, b) => a + b),
+                radius: 13),
+      ],
     );
   }
 

@@ -245,6 +245,12 @@ service cloud.firestore {
     // Private/owners (the authors' uids) has no rule, so clients can't read it.
     match /MatchUps/{matchupId} {
       allow read: if signedIn();
+
+      // Who wrote each answer, revealed once you've voted on the matchup
+      match /Authors/{doc} {
+        allow read: if signedIn() && exists(
+            /databases/$(database)/documents/Votes/$(matchupId + '_' + request.auth.uid));
+      }
     }
 
     // One vote per user per matchup, final: create only, never changed.

@@ -94,9 +94,11 @@ class _VotePageState extends State<VotePage> {
     if (!votingService.vote(card, type)) {
       return;
     }
+    FirebaseFirestore firestore =
+        Provider.of<FirebaseFirestore>(context, listen: false);
     try {
       await castVote(
-          Provider.of<FirebaseFirestore>(context, listen: false),
+          firestore,
           Provider.of<SessionService>(context, listen: false)
                   .loggedInUser
                   ?.uid ??
@@ -111,7 +113,11 @@ class _VotePageState extends State<VotePage> {
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
             const SnackBar(content: Text("Your vote didn't go through")));
       }
+      return;
     }
+    // the vote is saved, so the authors can be revealed
+    final authors = await getMatchupAuthors(firestore, m.id);
+    if (authors != null) votingService.setAuthors(m, authors);
   }
 
   /// Opens the comment thread of one answer
@@ -180,6 +186,7 @@ class _VotePageState extends State<VotePage> {
               segment: m.segment,
               accent: answerColors[card],
               myVote: myVote,
+              author: votingService.authorsFor(m)?[card],
               card: card,
               pickPercent: m.pickPercent(card),
               onVote: (type) => onVote(m, card, type),

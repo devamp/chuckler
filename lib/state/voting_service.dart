@@ -7,6 +7,7 @@ class VotingService with ChangeNotifier {
   List<Matchup> _queue = List.empty(growable: true);
   int _index = 0;
   final Map<String, MatchupVote> _votes = {};
+  final Map<String, List<MatchupAuthor>> _authors = {};
   bool _loaded = false;
 
   bool get loaded => _loaded;
@@ -18,6 +19,14 @@ class VotingService with ChangeNotifier {
   bool get canGoBack => _index > 0;
 
   MatchupVote? voteFor(Matchup m) => _votes[m.id];
+
+  /// Who wrote each answer, known once the user has voted (card order)
+  List<MatchupAuthor>? authorsFor(Matchup m) => _authors[m.id];
+
+  void setAuthors(Matchup m, List<MatchupAuthor> authors){
+    _authors[m.id] = authors;
+    notifyListeners();
+  }
   bool hasVoted(Matchup m) => _votes.containsKey(m.id);
 
   /// Replaces the queue, leaving out matchups that include one of the
@@ -66,6 +75,7 @@ class VotingService with ChangeNotifier {
     _queue = List.empty(growable: true);
     _index = 0;
     _votes.clear();
+    _authors.clear();
     _loaded = false;
     notifyListeners();
   }

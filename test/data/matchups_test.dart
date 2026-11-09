@@ -131,4 +131,22 @@ void main() {
     expect(parseSegment(null), Segment.global);
     expect(parseSegment('mars'), Segment.global);
   });
+
+  group('getMatchupAuthors', () {
+    test('reads both authors in card order', () async {
+      await firestore.doc('MatchUps/sample-1/Authors/names').set({
+        'answers': [
+          {'username': 'skyler', 'photoUrl': ''},
+          {'username': 'marco', 'photoUrl': 'https://example.com/m.png'},
+        ],
+      });
+      final a = await getMatchupAuthors(firestore, 'sample-1');
+      expect(a!.map((x) => x.username), ['skyler', 'marco']);
+      expect(a[1].photoUrl, 'https://example.com/m.png');
+    });
+
+    test('null when there is no authors doc', () async {
+      expect(await getMatchupAuthors(firestore, 'sample-2'), isNull);
+    });
+  });
 }
