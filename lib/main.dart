@@ -8,6 +8,7 @@ import './firebase/firebase_options.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'state/create_service.dart';
 import 'state/friends_service.dart';
+import 'state/account_service.dart';
 import 'state/feed_service.dart';
 import 'state/prompt_service.dart';
 import 'state/session_service.dart';
@@ -59,6 +60,7 @@ Future<void> main() async {
         ChangeNotifierProvider(create: (context) => VotingService()),
         ChangeNotifierProvider(create: (context) => CreateService()),
         ChangeNotifierProvider(create: (context) => FriendsService()),
+        ChangeNotifierProvider(create: (context) => AccountService()),
         Provider<IsarService>(create: (context) => IsarService()),
         Provider<FirebaseFirestore>(create: (context) => FirebaseFirestore.instance)
       ],

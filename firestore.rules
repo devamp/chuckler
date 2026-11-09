@@ -95,6 +95,18 @@ service cloud.firestore {
       }
 
       // A month of the user's answers. Only the owner adds to it.
+      // Notifications: written only by functions (friend requests, new
+      // friends, awards, comments, daily results). The owner reads them,
+      // marks them seen and can delete them.
+      match /Notifications/{id} {
+        allow read, delete: if isUser(uid);
+        allow update: if isUser(uid)
+            && request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['seen'])
+            && request.resource.data.seen == true;
+        allow create: if false;
+      }
+
       match /History/{month} {
         allow read, create, update: if isUser(uid);
         allow delete: if false;

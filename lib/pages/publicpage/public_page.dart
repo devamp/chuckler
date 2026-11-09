@@ -1,5 +1,4 @@
 import 'package:chuckler/CustomReusableWidgets/alert-dialog.dart';
-import 'package:chuckler/pages/accountpage/account_awards.dart';
 import 'package:chuckler/pages/publicpage/render_post.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_profile_picture/flutter_profile_picture.dart';
@@ -50,11 +49,20 @@ class AwardContainer extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Award(
-              awardIcon: awardIcon,
-              awardText: awardText,
-              isComplete: isComplete,
-              awardDescription: awardDescription)
+          // TODO: show the user's real awards (AwardBadge in
+          // account_awards.dart) once friend profiles are live
+          IconTheme(
+            data: IconThemeData(
+                color: isComplete ? Colors.amber : Colors.white, size: 35),
+            child: awardIcon,
+          ),
+          const SizedBox(height: 8),
+          Text(awardText,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14.0)),
         ],
       ),
     );

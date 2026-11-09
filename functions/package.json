@@ -10,7 +10,9 @@
     "logs": "firebase functions:log",
     "test": "mocha --exit --timeout 10000 test/*.test.js",
     "seed": "node scripts/seed.js",
-    "seed:answers": "node scripts/seed.js --answers"
+    "seed:answers": "node scripts/seed.js --answers",
+    "recount": "node scripts/maintain.js recount",
+    "finish-day": "node scripts/maintain.js finish-day"
   },
   "engines": {
     "node": "20"

@@ -6,13 +6,19 @@ import 'package:chuckler/CustomReusableWidgets/profile_photo.dart';
 import 'package:chuckler/database/models.dart';
 import 'package:chuckler/pages/accountpage/account.dart';
 import 'package:chuckler/pages/friends/friends_page.dart';
+import 'package:chuckler/state/account_service.dart';
 import 'package:chuckler/state/friends_service.dart';
+import 'package:chuckler/data/awards.dart';
+import 'dart:io';
 import 'package:chuckler/state/session_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+
+Future<List<AwardTrack>> fileCatalog() async =>
+    parseAwardCatalog(File('functions/awards.json').readAsStringSync());
 
 void main() {
   group('profilePictureName', () {
@@ -54,6 +60,8 @@ void main() {
           providers: [
             ChangeNotifierProvider.value(value: session),
             ChangeNotifierProvider.value(value: FriendsService()),
+            ChangeNotifierProvider.value(
+                value: AccountService(loadCatalog: fileCatalog)),
             Provider<FirebaseFirestore>.value(value: FakeFirebaseFirestore()),
           ],
           child: const MaterialApp(home: Account()),
@@ -82,6 +90,8 @@ void main() {
       providers: [
         ChangeNotifierProvider.value(value: session),
         ChangeNotifierProvider.value(value: FriendsService()),
+        ChangeNotifierProvider.value(
+            value: AccountService(loadCatalog: fileCatalog)),
         Provider<FirebaseFirestore>.value(value: firestore),
       ],
       child: const MaterialApp(home: Account()),
@@ -91,7 +101,8 @@ void main() {
 
     expect(find.text('Friends'), findsOneWidget);
     // 1 friend, and a badge for 1 waiting request
-    final badge = tester.widget<Badge>(find.byType(Badge));
+    final badge = tester.widget<Badge>(find.descendant(
+        of: find.byTooltip('Friends'), matching: find.byType(Badge)));
     expect(badge.isLabelVisible, isTrue);
     expect((badge.label as Text).data, '1');
     expect(find.text('1'), findsNWidgets(2));

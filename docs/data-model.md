@@ -89,7 +89,8 @@ Users/{sponsorId}   { username, photoUrl, kind: "sponsor", bio }          (later
 
 ```
 bio
-stats:  { answers, wins, bestRank, friends }
+stats:  { answers, wins, comments, friends, bestRank }
+awards: { posts: { "1": <when>, "100": <when> }, streak: { "30": <when> }, … }
 streak: {
   days:    "1101110001111",   one character per prompt day, oldest first
   from:    "2026-10-27",      the day days[0] stands for
@@ -103,6 +104,12 @@ streak: {
 - "Today" is the prompt's day (`promptDateId`), not the phone's clock.
 - One byte per day: about 3.6 KB for ten years. If it ever grows too large, move old years into History.
 
+`stats` and `awards` are kept by functions: `answers` by `onPostCreated`, `wins` by `onVoteCreated` (the winner from `Private/owners`), `comments` by `onCommentPageWritten` (the comment's writer), `friends` by `onFriendWritten`. Each runs in a transaction that also checks the awards catalog.
+
+**Awards** are tracks in `functions/awards.json`, which the functions require and the app bundles as an asset (one catalog, no drift). A track names a stat (`answers`, or a path such as `streak.longest`) and a list of tiers, each earned when the stat reaches `at`; `comingSoon` tracks (leaderboard, the 1%, referrals) show locked in the app. Earned tiers are stored as `awards.{trackId}.{at}` = when, compared against what's stored rather than the old stat, so adding a tier is one line and anyone already past it gets it at their next stat change (or at once with `npm --prefix functions run recount`).
+
+`Notifications/{id}`: `{ type, text, at, seen, from?: { username, photoUrl }, postId?, award?, dayId? }`, newest read first, 50 at a time. Only functions create them: `friendRequest` (a request by username), `friendAdded` (both sides), `award`, `comment` (to the answer's author, not for their own comments) and `results` (after the day ends). The owner may only set `seen` to true, or delete one. Requests sent by email can't be notified, because the server sees only the email's hash; the app lists them from `EmailRequests` at the top of the tab instead.
+
 `History/{yyyy-MM}`: the user's answers, about 90 a month (~35 KB):
 
 ```
@@ -112,7 +119,7 @@ answers: {
 }
 ```
 
-`final` is filled in once, when the prompt's lifetime ends. Live stats while a prompt is open come from `Posts`. Exempt `answers` from indexing in `firestore.indexes.json` (`fieldOverrides`).
+`final` (`{ wins, votes, dislikes, comments, matchups, winRate }`) is filled in once, when the prompt's day ends, by `finishDay` in `functions/results.js` (the `dailyResults` schedule at 05:05 UTC; `npm --prefix functions run finish-day` in the emulator, which doesn't run schedules). It also stamps `PromptDays/{dayId}.resultsAt`, so a day is finished once. The owner can still write their own History (posting does), so they could edit their own `final` numbers; that only changes what they see. Live stats while a prompt is open come from `Posts`. Exempt `answers` from indexing in `firestore.indexes.json` (`fieldOverrides`).
 
 ### Prompts
 
@@ -259,7 +266,7 @@ To dislike, the app writes one batch:
 | Send a friend request | `FriendRequests/{me}` under them (by username), or `EmailRequests/{hash}/From/{me}` (by email) | |
 | Accept a friend | `Friends` docs on both sides + delete the request, one batch | |
 | Create a friend prompt | `FriendPrompts/{id}` (before, after, creator, no audience) | `audience` from the creator's friends |
-| A prompt ends | | its `Results` pages, `final` stats in each author's `History` |
+| A prompt day ends | | its `Results` pages, `final` stats in each author's `History`, a results notification each |
 
 Until the project is on Blaze, functions don't run in production. The app can batch its own `History` write, but counts and streaks stay on sample data, because client-written counts can be edited by anyone.
 
@@ -322,7 +329,12 @@ Slice 3 (friends):
 
 - Friend streak standings (streak calendar): each friend's `FriendView/profile` streak, which friends can now read (the rule checks `Users/{them}/Friends/{me}`). 2 reads per friend each time the calendar opens; not cached yet.
 
-Not live yet: ranking and checkpoints, friend profiles, friend prompts, Past results, prompt dislikes, undoing a dislike.
+Account tab:
+- Header Posts and Wins from `FriendView/profile` stats (1 read); Friends from the `Friends` count.
+- Posts: the user's answers from History, read by month id (Firestore can't scan document ids in descending order), two months at a time, back to the month of the first answer (the streak's `from`). Answers whose day isn't finished read their post's live counts.
+- Notifications (`Users/{uid}/Notifications`) and achievements (`awards` on the profile), as above. Daily results run by script in the emulator.
+
+Not live yet: ranking and checkpoints, friend profiles, friend prompts, Past results, prompt dislikes, undoing a dislike, push notifications.
 
 ## Before the new layout
 

@@ -1,0 +1,59 @@
+[
+  {
+    "id": "posts",
+    "stat": "answers",
+    "tiers": [
+      {"at": 1, "name": "First Post", "description": "Answer your first prompt."},
+      {"at": 100, "name": "100 Posts", "description": "Answer 100 prompts."}
+    ]
+  },
+  {
+    "id": "streak",
+    "stat": "streak.longest",
+    "tiers": [
+      {"at": 30, "name": "Streaker", "description": "Answer a prompt 30 days in a row."}
+    ]
+  },
+  {
+    "id": "friends",
+    "stat": "friends",
+    "tiers": [
+      {"at": 100, "name": "100 Friends", "description": "Make 100 friends."}
+    ]
+  },
+  {
+    "id": "comments",
+    "stat": "comments",
+    "tiers": [
+      {"at": 100, "name": "100 Comments", "description": "Leave 100 comments."}
+    ]
+  },
+  {
+    "id": "wins",
+    "stat": "wins",
+    "tiers": [
+      {"at": 100, "name": "100 Wins", "description": "Win 100 votes with your answers."}
+    ]
+  },
+  {
+    "id": "leaderboard",
+    "comingSoon": true,
+    "tiers": [
+      {"name": "Leaderboard", "description": "Get a spot on the leaderboard."}
+    ]
+  },
+  {
+    "id": "top1",
+    "comingSoon": true,
+    "tiers": [
+      {"name": "The 1%", "description": "Finish a day in the top 1% of answers."}
+    ]
+  },
+  {
+    "id": "referral",
+    "comingSoon": true,
+    "tiers": [
+      {"name": "Refer a Friend", "description": "Invite a friend who joins Chuckler."}
+    ]
+  }
+]

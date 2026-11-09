@@ -82,6 +82,8 @@ flutter:
   assets:
     - assets/Chuckler-logo-circle.png
     - assets/svgfiles/
+    # the awards catalog, shared with the Cloud Functions
+    - functions/awards.json
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/assets-and-images/#resolution-aware

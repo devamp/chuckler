@@ -95,6 +95,19 @@ All of this runs **server-side** (scheduled Cloud Functions at the checkpoints) 
 
 **Open questions:** how long a lifetime is (and whether Friends prompts differ from Global), where the checkpoints fall, and what each one cuts.
 
+## 5. Account tab
+
+**Built (live in the emulator):** the header's Posts, Friends and Wins; the Posts tab (your answers, newest first, with live or final wins, votes and comments); Notifications (friend requests, new friends, awards, comments on your answers, daily results; opening the tab marks them seen); Achievements from the shared catalog `functions/awards.json` (earned tiers in gold, progress to the next, locked "coming soon" tracks). See `docs/data-model.md`.
+
+**Still to do:**
+- More tiers, e.g. 7- and 100-day streaks, 10 and 500 posts, 10 friends: one line each in `functions/awards.json`, then `recount`.
+- Leaderboard, The 1% and Refer a Friend need ranking and referral tracking.
+- Notify requests sent by email: store `EmailHashes/{hash} -> uid` (server-only) at signup so the function can find the recipient.
+- Push notifications (tokens in `Private/account`).
+- Tapping a notification should open what it's about (the answer's comments, the Friends screen).
+- Profile photos: the header still uses initials.
+- `lib/pages/accountpage/account_navbar_down.dart` is an unused older copy of the Account screen; delete it.
+
 ## Prerequisites
 
 - **Friends lists by uid.** *Done in the emulator (slice 3):* `Friends` and `FriendRequests` by uid, requests by username or email, and a Friends screen on the Account tab. *Friends who answered* is live on the Create tab (a `Posts` query per prompt, `uid in` the user's friends, 30 at a time). *Friend streak standings* are live too (friends can read each other's `FriendView`). Still to do: opening a friend's profile, and moving the Past feed popup off the old username lists on `Users`.

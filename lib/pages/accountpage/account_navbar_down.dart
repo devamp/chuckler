@@ -42,7 +42,8 @@ class _AccountPageState extends State<AccountPageContent> {
   This list is passed to the widget in account_posts.dart
    */
   void getMyPosts() async {
-    SessionService sessionService = Provider.of<SessionService>(context, listen: false);
+    SessionService sessionService =
+        Provider.of<SessionService>(context, listen: false);
     IsarService isar = Provider.of<IsarService>(context, listen: false);
     List<DbPrompt> postPrompts = List<DbPrompt>.empty(growable: true);
     if (sessionService.loggedInUser!.numPosts! > 0) {
@@ -144,7 +145,7 @@ class _AccountPageState extends State<AccountPageContent> {
   }
 
   Widget getMyPostsScreen(BuildContext context) {
-    return AccountPosts(posts: posts);
+    return const AccountPosts();
   }
 
   Widget getMyAwardsScreen(BuildContext context) {
@@ -337,7 +338,7 @@ class _AccountPageState extends State<AccountPageContent> {
               overflow: TextOverflow.visible,
             ),
           ),
-          AccountNotifications(notifications: notifications),
+          const AccountNotifications(),
           Container(
             alignment: Alignment.centerLeft,
             child: const Text(
@@ -349,7 +350,7 @@ class _AccountPageState extends State<AccountPageContent> {
               overflow: TextOverflow.visible,
             ),
           ),
-          AccountNotifications(notifications: notifications),
+          const AccountNotifications(),
           Container(
             alignment: Alignment.centerLeft,
             child: const Text(
@@ -361,7 +362,7 @@ class _AccountPageState extends State<AccountPageContent> {
               overflow: TextOverflow.visible,
             ),
           ),
-          AccountNotifications(notifications: notifications),
+          const AccountNotifications(),
         ],
       ),
     );

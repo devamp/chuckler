@@ -879,3 +879,41 @@ describe("matchup authors", () => {
         {answers: []}));
   });
 });
+
+describe("notifications", () => {
+  const N = "Users/alice/Notifications/n1";
+  beforeEach(async () => {
+    await seed({[N]: {type: "award", text: "You earned First Post!",
+      at: Timestamp.now(), seen: false}});
+  });
+
+  it("the owner reads, marks seen and deletes", async () => {
+    await assertSucceeds(getDoc(doc(as("alice"), N)));
+    await assertSucceeds(getDocs(
+        collection(as("alice"), "Users/alice/Notifications")));
+    await assertSucceeds(updateDoc(doc(as("alice"), N), {seen: true}));
+    await assertSucceeds(deleteDoc(doc(as("alice"), N)));
+  });
+
+  it("the owner can't create one, change its text or unsee it", async () => {
+    await assertFails(setDoc(doc(as("alice"), "Users/alice/Notifications/n2"),
+        {type: "award", text: "fake", at: Timestamp.now(), seen: false}));
+    await assertFails(updateDoc(doc(as("alice"), N), {text: "changed"}));
+    await assertFails(updateDoc(doc(as("alice"), N),
+        {seen: true, text: "changed"}));
+    await seed({[N]: {type: "award", text: "x", seen: true}});
+    await assertFails(updateDoc(doc(as("alice"), N), {seen: false}));
+  });
+
+  it("nobody else reads or writes them", async () => {
+    await assertFails(getDoc(doc(as("bob"), N)));
+    await assertFails(getDocs(
+        collection(as("bob"), "Users/alice/Notifications")));
+    await assertFails(updateDoc(doc(as("bob"), N), {seen: true}));
+    await assertFails(deleteDoc(doc(as("bob"), N)));
+    await assertFails(setDoc(doc(as("bob"), "Users/alice/Notifications/n3"),
+        {type: "friendRequest", text: "hi", seen: false}));
+    const db = env.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, N)));
+  });
+});

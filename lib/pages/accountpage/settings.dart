@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import '../../state/create_service.dart';
 import '../../state/prompt_service.dart';
 import '../../state/friends_service.dart';
+import '../../state/account_service.dart';
 import '../../state/voting_service.dart';
 
 class Settings extends StatelessWidget {
@@ -59,6 +60,7 @@ class Settings extends StatelessWidget {
                               Provider.of<CreateService>(context, listen: false).logout();
                               Provider.of<VotingService>(context, listen: false).logout();
                               Provider.of<FriendsService>(context, listen: false).logout();
+                              Provider.of<AccountService>(context, listen: false).logout();
                               await _auth.signOut();
                               Navigator.pushReplacementNamed(context, '/login');
                             },

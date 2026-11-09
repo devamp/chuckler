@@ -3,7 +3,13 @@ const {
   onDocumentCreated, onDocumentWritten,
 } = require("firebase-functions/v2/firestore");
 const {initializeApp} = require("firebase-admin/app");
-const {isDayId, markStreakDay} = require("./promptDay");
+const {onSchedule} = require("firebase-functions/v2/scheduler");
+const {isDayId, markStreakDay, promptDayId, addDays} =
+    require("./promptDay");
+const {
+  profileRef, notificationRef, notification, applyStats, bumpStats, clip,
+} = require("./profile");
+const {finishDay} = require("./results");
 initializeApp();
 const db = getFirestore();
 
@@ -95,6 +101,8 @@ exports.createMatchup = onDocumentCreated("Posts/{postId}", async (event) => {
 // matchup (the post's counts.dislikes was already added by the voter's
 // batch, next to their Dislikes doc). Until ranking checkpoints exist, the
 // posts' votes and wins are kept here too, so authors see their stats.
+// A win also adds to the winning author's stats.wins (and any wins award);
+// the matchup's Private/owners says who that is.
 exports.onVoteCreated = onDocumentCreated("Votes/{voteId}", async (event) => {
   const vote = event.data.data();
   const {matchupId, card, type} = vote;
@@ -108,6 +116,17 @@ exports.onVoteCreated = onDocumentCreated("Votes/{voteId}", async (event) => {
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(matchupRef);
       if (!snap.exists) return;
+      // reads first: the winner's profile, for their stats
+      let winner = null;
+      if (type === "win") {
+        const owners = await tx.get(
+            matchupRef.collection("Private").doc("owners"));
+        const uid = owners.data()?.uids?.[card];
+        if (uid) {
+          const profile = await tx.get(profileRef(db, uid));
+          winner = {uid, profile: profile.exists ? profile.data() : {}};
+        }
+      }
       const answers = snap.data().answers.map((a) => ({...a}));
       const key = type === "win" ? "wins" : "dislikes";
       answers[card][key] = (answers[card][key] || 0) + 1;
@@ -119,6 +138,9 @@ exports.onVoteCreated = onDocumentCreated("Votes/{voteId}", async (event) => {
         }
         tx.update(db.collection("Posts").doc(a.postId), update);
       });
+      if (winner) {
+        applyStats(tx, db, winner.uid, winner.profile, {deltas: {wins: 1}});
+      }
     });
   } catch (e) {
     console.log(`onVoteCreated: ${event.params.voteId}: ${e}`);
@@ -132,6 +154,8 @@ const PREVIEW_SIZE = 2;
 // onCommentPageWritten keeps an answer's comment count and preview on the
 // post and on the active matchups it's in, whenever a comment is added to
 // or removed from one of its CommentPages.
+// Each new comment also adds to its writer's stats.comments and tells the
+// answer's author (unless they wrote it).
 exports.onCommentPageWritten = onDocumentWritten(
     "Posts/{postId}/CommentPages/{page}", async (event) => {
       const postId = event.params.postId;
@@ -154,6 +178,21 @@ exports.onCommentPageWritten = onDocumentWritten(
 
         await postRef.update(
             {commentCount, "counts.comments": commentCount, preview});
+
+        const added = Object.keys(after).filter((k) => !(k in before));
+        const post = added.length ? (await postRef.get()).data() || {} : {};
+        for (const key of added) {
+          const c = after[key] || {};
+          if (!c.uid) continue;
+          await bumpStats(db, c.uid, {comments: 1});
+          if (post.uid && post.uid !== c.uid) {
+            await notificationRef(db, post.uid).set(notification("comment",
+                `${c.username || "Someone"} commented on ` +
+                `"${clip(post.answer)}": ${clip(c.text, 60)}`,
+                {from: {username: c.username || "", photoUrl: ""},
+                  postId}));
+          }
+        }
         const matchups = await db.collection("MatchUps")
             .where("postIds", "array-contains", postId)
             .where("status", "==", "active").get();
@@ -172,7 +211,8 @@ exports.onCommentPageWritten = onDocumentWritten(
 
 // onPostCreated keeps the server-side counts for a new answer:
 // - the prompt's counts.answers
-// - the author's FriendView/profile: stats.answers and the answer streak.
+// - the author's FriendView/profile: stats.answers, the answer streak and
+//   any awards they reach.
 // The streak day is the post's promptDateId, not the server clock.
 exports.onPostCreated = onDocumentCreated("Posts/{postId}", async (event) => {
   const post = event.data.data();
@@ -192,17 +232,64 @@ exports.onPostCreated = onDocumentCreated("Posts/{postId}", async (event) => {
   }
 
   try {
-    const profileRef = db.collection("Users").doc(uid)
-        .collection("FriendView").doc("profile");
     await db.runTransaction(async (tx) => {
-      const snap = await tx.get(profileRef);
+      const snap = await tx.get(profileRef(db, uid));
       const profile = snap.exists ? snap.data() : {};
-      const update = {stats: {answers: FieldValue.increment(1)}};
       const streak = markStreakDay(profile.streak, promptDateId);
-      if (streak) update.streak = streak;
-      tx.set(profileRef, update, {merge: true});
+      applyStats(tx, db, uid, profile, {deltas: {answers: 1}, streak});
     });
   } catch (e) {
     console.log(`onPostCreated: profile ${uid}: ${e}`);
   }
 });
+
+// onFriendRequestCreated tells the recipient about a request sent by
+// username. Requests by email can't be told this way: the server only sees
+// the email's hash, so the app lists them from EmailRequests instead.
+exports.onFriendRequestCreated = onDocumentCreated(
+    "Users/{uid}/FriendRequests/{fromUid}", async (event) => {
+      const card = event.data.data() || {};
+      try {
+        await notificationRef(db, event.params.uid).set(notification(
+            "friendRequest",
+            `${card.username || "Someone"} sent you a friend request`,
+            {from: {username: card.username || "",
+              photoUrl: card.photoUrl || ""}}));
+      } catch (e) {
+        console.log(`onFriendRequestCreated: ${event.params.uid}: ${e}`);
+      }
+    });
+
+// onFriendWritten keeps stats.friends (and the friends award) as friends
+// are added to or removed from a user's list, and tells them about a new
+// friend. Both sides' docs are written on accept, so each side hears once.
+exports.onFriendWritten = onDocumentWritten(
+    "Users/{uid}/Friends/{friendUid}", async (event) => {
+      const uid = event.params.uid;
+      const before = event.data.before.exists;
+      const after = event.data.after.exists;
+      if (before === after) return;
+      try {
+        await bumpStats(db, uid, {friends: after ? 1 : -1});
+        if (after) {
+          const card = event.data.after.data() || {};
+          await notificationRef(db, uid).set(notification("friendAdded",
+              `You and ${card.username || "someone"} are now friends`,
+              {from: {username: card.username || "",
+                photoUrl: card.photoUrl || ""}}));
+        }
+      } catch (e) {
+        console.log(`onFriendWritten: ${uid}: ${e}`);
+      }
+    });
+
+// dailyResults finishes the prompt day that just ended: each answer's final
+// stats go into its author's History, and each author gets a results
+// notification. The emulator doesn't run schedules; use
+// `npm --prefix functions run finish-day` there.
+exports.dailyResults = onSchedule(
+    {schedule: "5 5 * * *", timeZone: "UTC"}, async () => {
+      const dayId = addDays(promptDayId(new Date()), -1);
+      const result = await finishDay(db, dayId);
+      console.log(`dailyResults ${dayId}: ${JSON.stringify(result)}`);
+    });
