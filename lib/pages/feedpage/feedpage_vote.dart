@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/matchups.dart';
+import '../../state/prompt_service.dart';
 import '../../state/session_service.dart';
 import '../../state/voting_service.dart';
+import 'feedpage_comments.dart';
 import 'feedpage_vote_card.dart';
 
 const String voteTutorialSeenKey = 'voteTutorialSeen';
@@ -31,10 +33,12 @@ class _VotePageState extends State<VotePage> {
     checkTutorial();
   }
 
-  Future<void> loadMatchups() async {
+  /// Loads today's matchups once per session, or again when [force] is set
+  /// (the "check for new ones" button).
+  Future<void> loadMatchups({bool force = false}) async {
     VotingService votingService =
         Provider.of<VotingService>(context, listen: false);
-    if (votingService.loaded) {
+    if (votingService.loaded && !force) {
       return;
     }
     FirebaseFirestore firestore =
@@ -43,7 +47,18 @@ class _VotePageState extends State<VotePage> {
             .loggedInUser
             ?.uid ??
         '';
-    votingService.setMatchups(await getVotingMatchups(firestore, uid), uid);
+    final myPostIds = {
+      for (final p in Provider.of<PromptService>(context, listen: false)
+          .userPostsForPrompts)
+        if ((p?.postId ?? '').isNotEmpty) p!.postId!,
+    };
+    List<Matchup> matchups = [];
+    try {
+      matchups = await getVotingMatchups(firestore, uid, myPostIds);
+    } catch (e) {
+      debugPrint('matchups: $e');
+    }
+    votingService.setMatchups(matchups, myPostIds);
   }
 
   Future<void> checkTutorial() async {
@@ -73,11 +88,14 @@ class _VotePageState extends State<VotePage> {
     }
   }
 
-  void onVote(Matchup m, int card, VoteType type) {
+  Future<void> onVote(Matchup m, int card, VoteType type) async {
     VotingService votingService =
         Provider.of<VotingService>(context, listen: false);
-    if (votingService.vote(card, type)) {
-      castVote(
+    if (!votingService.vote(card, type)) {
+      return;
+    }
+    try {
+      await castVote(
           Provider.of<FirebaseFirestore>(context, listen: false),
           Provider.of<SessionService>(context, listen: false)
                   .loggedInUser
@@ -85,49 +103,25 @@ class _VotePageState extends State<VotePage> {
               '',
           m,
           votingService.voteFor(m)!);
+    } catch (e) {
+      // refused (already voted elsewhere, or offline): take it back
+      debugPrint('vote refused: $e');
+      votingService.undoVote(m);
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+            const SnackBar(content: Text("Your vote didn't go through")));
+      }
     }
   }
 
-  /// Opens the comment thread of one answer. Threads belong to the answer,
-  /// not the matchup, so they follow it as matchups change and into Past.
+  /// Opens the comment thread of one answer
   void openComments(Matchup m, int card) {
-    // TODO(cloud): read Posts/{postId}/CommentPages/{n} for
-    // m.answers[card].postId, about 200 comments per page, so a thread is one
-    // read per page. Posting adds one key to the latest page; rules allow it
-    // only for users with a Votes doc on a matchup containing that answer.
-    // See docs/data-model.md (Posts, CommentPages).
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.black87,
-      builder: (context) => SizedBox(
-        height: 250,
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('"${m.answers[card].answer}"',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      color: answerColors[card],
-                      fontFamily: 'OpenSans',
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16)),
-              const Expanded(
-                child: Center(
-                  child: Text(
-                    'Comments on this answer are coming soon',
-                    style:
-                        TextStyle(color: Colors.white, fontFamily: 'OpenSans'),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    showAnswerComments(context,
+        matchup: m,
+        card: card,
+        accent: answerColors[card],
+        canComment: Provider.of<VotingService>(context, listen: false)
+            .hasVoted(m));
   }
 
   @override
@@ -230,13 +224,13 @@ class _VotePageState extends State<VotePage> {
     );
   }
 
-  /// Comments on the answer the user just picked or downvoted. Tapping the
-  /// other card opens that answer's thread instead.
+  /// Comments on the answer the user just picked or downvoted: its count
+  /// and latest comment, copied into the matchup so this costs no reads.
+  /// Tapping the other card opens that answer's thread instead.
   Widget commentsPreview(Matchup m, int card) {
     double width = MediaQuery.of(context).size.width;
-    // TODO(cloud): show m.answers[card].preview (the latest 2 comments) and
-    // commentCount. A function copies them into the matchup when someone
-    // comments, so this costs no reads.
+    final answer = m.answers[card];
+    final latest = answer.preview.isEmpty ? null : answer.preview.last;
     return GestureDetector(
       onTap: () => openComments(m, card),
       child: Container(
@@ -248,13 +242,25 @@ class _VotePageState extends State<VotePage> {
         child: Row(
           children: [
             Icon(Icons.chat_bubble_outline, color: answerColors[card], size: 18),
-            SizedBox(width: 8),
-            const Text('Comments',
-                style: TextStyle(
+            const SizedBox(width: 8),
+            Text(
+                answer.commentCount == 0
+                    ? 'Comments'
+                    : 'Comments (${answer.commentCount})',
+                style: const TextStyle(
                     color: Colors.white,
                     fontFamily: 'OpenSans',
                     fontWeight: FontWeight.bold)),
-            const Spacer(),
+            const SizedBox(width: 10),
+            Expanded(
+              child: latest == null
+                  ? const SizedBox()
+                  : Text('${latest.username}: ${latest.text}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Colors.white70, fontFamily: 'OpenSans')),
+            ),
             const Icon(Icons.chevron_right, color: Colors.white),
           ],
         ),
@@ -293,14 +299,26 @@ class _VotePageState extends State<VotePage> {
   }
 
   Widget caughtUp() {
-    return const Center(
+    return Center(
       child: Padding(
-        padding: EdgeInsets.all(30),
-        child: Text(
-          "You're all caught up!\nCheck Past for earlier prompts.",
-          textAlign: TextAlign.center,
-          style: TextStyle(
-              color: Colors.white, fontFamily: 'OpenSans', fontSize: 20),
+        padding: const EdgeInsets.all(30),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              "You're all caught up!\nNew matchups show up as people answer.",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  color: Colors.white, fontFamily: 'OpenSans', fontSize: 20),
+            ),
+            const SizedBox(height: 16),
+            TextButton.icon(
+              onPressed: () => loadMatchups(force: true),
+              icon: const Icon(Icons.refresh, color: Colors.amberAccent),
+              label: const Text('Check for new matchups',
+                  style: TextStyle(color: Colors.white, fontFamily: 'OpenSans')),
+            ),
+          ],
         ),
       ),
     );

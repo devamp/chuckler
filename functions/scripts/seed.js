@@ -1,10 +1,15 @@
-// Seeds the LOCAL EMULATORS with fresh slice-1 test data:
+// Seeds the LOCAL EMULATORS with fresh test data:
 //   - the official Chuckler account (Users/chuckler + Usernames/chuckler)
-//   - 3 test accounts in the Auth emulator (emails below, password
+//   - 8 test accounts in the Auth emulator (emails below, password
 //     TEST_PASSWORD) with their Users, Usernames, FriendView and Private docs
 //   - PromptDays for yesterday, today and the next 2 days (prompt days roll
 //     over at 05:00 UTC), 3 Chuckler prompts each
-// It overwrites these docs if they exist and leaves everything else alone.
+//   - answers from every test account to today's prompts, so there is
+//     something to vote on. With the functions emulator running, the
+//     createMatchup function pairs them into matchups (4 per prompt).
+// It overwrites the account and prompt docs if they exist, skips answers
+// that already exist, and leaves everything else alone. Run it on fresh
+// emulators: re-running resets the prompts' counts.
 // It refuses to run unless FIRESTORE_EMULATOR_HOST is set, so it can't
 // write to production.
 //
@@ -55,6 +60,45 @@ const TEST_USERS = [
   {uid: "test-ava", username: "ava", email: "ava@chuckler.test", age: 24},
   {uid: "test-ben", username: "ben", email: "ben@chuckler.test", age: 31},
   {uid: "test-cleo", username: "cleo", email: "cleo@chuckler.test", age: 19},
+  {uid: "test-dev", username: "dev", email: "dev@chuckler.test", age: 22},
+  {uid: "test-eli", username: "eli", email: "eli@chuckler.test", age: 27},
+  {uid: "test-fay", username: "fay", email: "fay@chuckler.test", age: 20},
+  {uid: "test-gus", username: "gus", email: "gus@chuckler.test", age: 35},
+  {uid: "test-hal", username: "hal", email: "hal@chuckler.test", age: 18},
+];
+
+// Today's answers, one per test account (in TEST_USERS order) per prompt.
+const TODAY_ANSWERS = [
+  [
+    "they missed the group project deadline",
+    "a meteor, but it was a gender reveal",
+    "they kept replying-all",
+    "unpaid internships",
+    "the floor was lava, for real",
+    "they all moved to Florida",
+    "Jurassic rent prices",
+    "nobody told them about the asteroid group chat",
+  ],
+  [
+    "say \"per my last email\"",
+    "microwave fish at work",
+    "watch my own Instagram stories",
+    "argue with toddlers",
+    "fake laugh at my boss",
+    "name my houseplants after exes",
+    "buy candles",
+    "check my ex's Spotify",
+  ],
+  [
+    "a voice memo of me chewing",
+    "my screen time report",
+    "\"who wants to see my feet\"",
+    "a selfie with my mom's boyfriend",
+    "my LinkedIn post",
+    "the wrong screenshot",
+    "a 4-minute Minion video",
+    "\"k\"",
+  ],
 ];
 
 // 3 prompts per day: day offset -1 (yesterday) to +2.
@@ -150,11 +194,46 @@ async function main() {
   });
 
   await batch.commit();
+
+  // Today's answers, written one at a time like the app's createPost (post
+  // + History entry) so the functions emulator handles each in turn.
+  let answers = 0;
+  for (const [j, prompt] of PROMPTS[1].entries()) {
+    const promptId = `p${j + 1}`;
+    for (const [k, u] of TEST_USERS.entries()) {
+      const postRef = db.doc(`Posts/seed-${today}-${promptId}-${u.uid}`);
+      if ((await postRef.get()).exists) continue;
+      const answer = TODAY_ANSWERS[j][k];
+      const at = Timestamp.fromDate(new Date(Date.now() - (60 - answers) *
+          60 * 1000));
+      const post = db.batch();
+      post.set(postRef, {
+        answer, uid: u.uid, username: u.username, promptId,
+        promptDateId: today, date: at, likes: 0, dislikes: 0, wins: 0,
+        random: Math.floor(Math.random() * 1000000),
+        before: prompt[0], after: prompt[1], status: "active",
+        counts: {matchups: 0, votes: 0, wins: 0, dislikes: 0, likes: 0,
+          comments: 0},
+      });
+      post.set(db.doc(`Users/${u.uid}/History/${today.substring(0, 7)}`), {
+        answers: {[`${today}_${promptId}`]: {
+          postId: postRef.id, promptDateId: today, promptId,
+          before: prompt[0], after: prompt[1], answer, at,
+        }},
+      }, {merge: true});
+      await post.commit();
+      answers++;
+      // give createMatchup a moment, so answers pair in order
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  }
+
   console.log(`Seeded project ${PROJECT_ID} on ` +
       `${process.env.FIRESTORE_EMULATOR_HOST}:`);
   console.log(`  prompt days ${days.join(", ")} (today is ${today})`);
   console.log(`  accounts ${TEST_USERS.map((u) => u.email).join(", ")} ` +
       `(password: ${TEST_PASSWORD})`);
+  console.log(`  ${answers} new answers to today's prompts`);
 }
 
 main().catch((e) => {

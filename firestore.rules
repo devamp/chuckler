@@ -1,7 +1,7 @@
 rules_version = '2';
 
-// Slice 1 rules (see docs/data-model.md). The legacy collections (Comments,
-// Notifications, MatchUps and the legacy Users fields) stay open to any
+// Slice 1 and 2 rules (see docs/data-model.md). The legacy collections
+// (Comments, Notifications and the legacy Users fields) stay open to any
 // signed-in user until their slices replace them. Anything not matched here
 // is denied. Tested by functions/test/rules.test.js.
 service cloud.firestore {
@@ -117,16 +117,104 @@ service cloud.firestore {
           && d.get('likedBy', []).size() == 0;
     }
 
+    // A dislike from the voter's batch: counts.dislikes goes up by exactly 1
+    // and nothing else changes, and the same batch creates this user's
+    // Dislikes doc for the post, which didn't exist before. So an answer is
+    // disliked once per user and the author sees only the count.
+    function isDislike(postId) {
+      let d = /databases/$(database)/documents/Dislikes/$(postId + '_' + request.auth.uid);
+      let before = resource.data.get('counts', {});
+      let after = request.resource.data.get('counts', {});
+      return onlyChanged(['counts'])
+          && after.diff(before).affectedKeys().hasOnly(['dislikes'])
+          && after.get('dislikes', 0) == before.get('dislikes', 0) + 1
+          && !exists(d) && existsAfter(d);
+    }
+
     match /Posts/{postId} {
       // Legacy: the feed reads everyone's posts. Friends-only later.
       allow read: if signedIn();
       allow create: if isUser(request.resource.data.uid) && zeroCounts();
       // Legacy voting bumps likes/wins from the client; counts and the
-      // author belong to the server.
+      // author belong to the server, apart from an anonymous dislike.
       allow update: if signedIn()
-          && !request.resource.data.diff(resource.data).affectedKeys()
-              .hasAny(['counts', 'uid']);
+          && (!request.resource.data.diff(resource.data).affectedKeys()
+                  .hasAny(['counts', 'uid'])
+              || isDislike(postId));
       allow delete: if isUser(resource.data.uid);
+
+      // An answer's comments, ~200 per page. Anyone signed in can read them.
+      // Only someone who voted on a matchup with this answer can comment:
+      // a write adds exactly one comment, named by `last`, carrying the
+      // writer's uid and the matchup they voted on. Counts and previews are
+      // kept by onCommentPageWritten.
+      match /CommentPages/{page} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+            && request.resource.data.keys().hasOnly(['comments', 'last'])
+            && request.resource.data.comments.keys().toSet()
+                == [request.resource.data.last].toSet()
+            && isOwnComment(postId, request.resource.data.comments[request.resource.data.last]);
+        allow update: if signedIn()
+            && onlyChanged(['comments', 'last'])
+            && request.resource.data.comments.diff(resource.data.comments).affectedKeys()
+                == [request.resource.data.last].toSet()
+            && !(request.resource.data.last in resource.data.comments)
+            && isOwnComment(postId, request.resource.data.comments[request.resource.data.last]);
+      }
+    }
+
+    // A new comment by the writer on postId, made after voting on a matchup
+    // that contains postId.
+    function isOwnComment(postId, c) {
+      return c is map
+          && c.keys().hasOnly(['uid', 'username', 'text', 'matchupId', 'at'])
+          && c.uid == request.auth.uid
+          && c.text is string && c.text.size() > 0 && c.text.size() <= 500
+          && exists(/databases/$(database)/documents/Votes/$(c.matchupId + '_' + request.auth.uid))
+          && postId in get(/databases/$(database)/documents/MatchUps/$(c.matchupId)).data.postIds;
+    }
+
+    // ---- Voting --------------------------------------------------------
+
+    // Matchups are anonymous and written only by Cloud Functions.
+    // Private/owners (the authors' uids) has no rule, so clients can't read it.
+    match /MatchUps/{matchupId} {
+      allow read: if signedIn();
+    }
+
+    // One vote per user per matchup, final: create only, never changed.
+    // Not on a matchup with your own answer. A downvote must come in the
+    // same batch as the anonymous dislike on that answer.
+    match /Votes/{voteId} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+      allow create: if signedIn() && isNewVote(voteId);
+    }
+
+    function isNewVote(voteId) {
+      let v = request.resource.data;
+      let m = get(/databases/$(database)/documents/MatchUps/$(v.matchupId)).data;
+      let owners = get(/databases/$(database)/documents/MatchUps/$(v.matchupId)/Private/owners).data;
+      return v.keys().hasOnly(['uid', 'matchupId', 'card', 'type', 'promptDateId', 'at'])
+          && v.uid == request.auth.uid
+          && voteId == v.matchupId + '_' + request.auth.uid
+          && v.card in [0, 1]
+          && v.type in ['win', 'dislike']
+          && v.promptDateId == m.promptDateId
+          && !(request.auth.uid in owners.uids)
+          && (v.type == 'win' || existsAfter(
+              /databases/$(database)/documents/Dislikes/$(m.postIds[v.card] + '_' + request.auth.uid)));
+    }
+
+    // Anonymous dislikes, one per user per answer. Only the disliker can
+    // read theirs. Dislikes from voting are final, so no delete yet.
+    match /Dislikes/{dislikeId} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+      allow create: if signedIn()
+          && request.resource.data.keys().hasOnly(['uid', 'targetId', 'targetType', 'matchupId', 'at'])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.targetType == 'post'
+          && dislikeId == request.resource.data.targetId + '_' + request.auth.uid;
     }
 
     // ---- Legacy collections, open to signed-in users ---------------------
@@ -136,10 +224,6 @@ service cloud.firestore {
     }
 
     match /Notifications/{document=**} {
-      allow read, write: if signedIn();
-    }
-
-    match /MatchUps/{document=**} {
       allow read, write: if signedIn();
     }
   }

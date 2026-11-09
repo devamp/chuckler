@@ -20,13 +20,13 @@ void main() {
   });
 
   test('setMatchups leaves out matchups with the user\'s own answer', () {
-    s.setMatchups(sampleMatchups(), 'sample-u3');
+    s.setMatchups(sampleMatchups(), {'s2a'});
 
     expect(s.loaded, isTrue);
     expect(s.length, 4);
     expect(s.current!.id, 'sample-1');
     expect(notified, 1);
-    // sample-2 has sample-u3's answer
+    // sample-2 has the user's answer s2a
     expect(List.generate(s.length, (i) {
       final id = s.current!.id;
       s.next();
@@ -35,7 +35,7 @@ void main() {
   });
 
   test('a win adds to that answer and is final', () {
-    s.setMatchups(sampleMatchups(), 'me');
+    s.setMatchups(sampleMatchups(), {});
     final m = s.current!;
 
     expect(s.vote(0, VoteType.win), isTrue);
@@ -51,7 +51,7 @@ void main() {
   });
 
   test('a downvote does not count as a win for the other answer', () {
-    s.setMatchups(sampleMatchups(), 'me');
+    s.setMatchups(sampleMatchups(), {});
     final m = s.current!;
 
     s.vote(1, VoteType.downvote);
@@ -71,7 +71,7 @@ void main() {
   });
 
   test('next skips forward and runs out at the end', () {
-    s.setMatchups(sampleMatchups(), 'me');
+    s.setMatchups(sampleMatchups(), {});
     for (var i = 0; i < 5; i++) {
       s.next();
     }
@@ -81,7 +81,7 @@ void main() {
   });
 
   test('back shows a voted matchup without allowing a new vote', () {
-    s.setMatchups(sampleMatchups(), 'me');
+    s.setMatchups(sampleMatchups(), {});
     final first = s.current!;
     s.vote(0, VoteType.win);
     s.next();
@@ -94,7 +94,7 @@ void main() {
   });
 
   test('back to a skipped matchup still allows voting', () {
-    s.setMatchups(sampleMatchups(), 'me');
+    s.setMatchups(sampleMatchups(), {});
     final first = s.current!;
     s.next();
 
@@ -104,8 +104,33 @@ void main() {
     expect(s.vote(1, VoteType.win), isTrue);
   });
 
+  test('undoVote takes back a refused vote and its counts', () {
+    s.setMatchups(sampleMatchups(), {});
+    final m = s.current!;
+    s.vote(1, VoteType.downvote);
+
+    s.undoVote(m);
+
+    expect(s.hasVoted(m), isFalse);
+    expect(m.answers[1].downvotes, 4);
+    expect(s.vote(0, VoteType.win), isTrue);
+    expect(m.answers[0].wins, 32);
+  });
+
+  test('logout forgets the queue so Home loads it again', () {
+    s.setMatchups(sampleMatchups(), {});
+    s.vote(0, VoteType.win);
+    s.next();
+
+    s.logout();
+
+    expect(s.loaded, isFalse);
+    expect(s.length, 0);
+    expect(s.index, 0);
+  });
+
   test('back does nothing on the first matchup', () {
-    s.setMatchups(sampleMatchups(), 'me');
+    s.setMatchups(sampleMatchups(), {});
     notified = 0;
     s.back();
     expect(s.index, 0);

@@ -28,7 +28,7 @@ flutter run --dart-define=USE_EMULATOR=true --dart-define=EMULATOR_HOST=192.168.
 flutter run
 ```
 
-Firebase emulators (auth 9099, firestore 8080, functions 5001, storage 9199, UI enabled). Seed data is in `fb_em_data/`: the Chuckler account, test accounts `ava`/`ben`/`cleo` `@chuckler.test` (password in `functions/scripts/seed.js`), and prompt days around the day it was made:
+Firebase emulators (auth 9099, firestore 8080, functions 5001, storage 9199, UI enabled). Seed data is in `fb_em_data/`: the Chuckler account, eight test accounts (`ava`, `ben`, `cleo`, `dev`, `eli`, `fay`, `gus`, `hal` `@chuckler.test`, password in `functions/scripts/seed.js`), prompt days around the day it was made, and every test account's answers to that day's prompts, paired into matchups by `createMatchup`. Run the seed on fresh emulators with functions running, then export:
 
 ```bash
 firebase emulators:start --import=fb_em_data [--export-on-exit=fb_em_data]
@@ -68,18 +68,20 @@ Tests run without Firebase: `test/data/` covers the query functions against `fak
 
 **Data layer: two tiers**
 - Remote: `lib/data/` holds top-level async Firestore functions grouped by feature: `prompts.dart`, `posts.dart`, `users.dart`, `friends.dart`, `comments.dart`. Each takes a `FirebaseFirestore` argument. Firestore collections: `Users`, `Posts`, `Comments`, `PromptDays`, `MatchUps`, `Notifications`.
-- `lib/data/matchups.dart` (swipe voting) still runs on sample data from `sample_matchups.dart`; its `TODO(cloud)` notes list the MatchUps/Votes fields, queries, rules and Cloud Functions it needs.
+- Home voting is live on the new layout (`docs/data-model.md`, "Live in the emulator", slice 2): `lib/data/matchups.dart` reads today's `MatchUps` and writes `Votes` (plus an anonymous `Dislikes` doc for a downvote); `lib/data/comments.dart` reads and adds answer comments in `Posts/{id}/CommentPages`. `sample_matchups.dart` is only for tests.
 - The Create tab is live on the new layout (`docs/data-model.md`, "Live in the emulator"). Prompt days roll over at 05:00 UTC (`lib/data/prompt_day.dart`); `getDailyPrompts` reads `PromptDays/{dayId}/Prompts`; `createPost` batches the post with the user's `History/{yyyy-MM}` entry; login reads today's answers from History; signup (`registerNewUser` in `lib/data/users.dart`) claims `Usernames/{name}` in a transaction. `lib/data/prompt_stats.dart` reads prompt counts, likes and the streak; sample stats are used only for the sample prompts debug builds add when no real prompt is live. Answers to sample prompts stay on the phone.
 - When today has no prompt, `getDailyPrompts` returns a placeholder prompt (`awaitingPrompt()`, checked with `isAwaitingPrompt`). It has a null date so the Isar cache never serves it, and the create page refuses to post to it.
 - Local: Isar (the community fork, `isar_community` 3.4.x, which supports Swift Package Manager) models in `lib/database/models.dart` (`DbPost`, `DbPrompt`, `DbUser`, `DbComment`, `DbNotification`). `models.g.dart` is generated, so don't hand-edit it. Fetched Firestore data is mapped into these models, cached in Isar, and pushed into the `lib/state/` services for the UI.
 - `lib/db.dart` is an older SharedPreferences-based store, still used by the login flow for things like caching the last login time.
 
-**Server-side logic (`functions/index.js`)**: Firestore triggers on `Posts/{docid}` creation:
-- `createMatchup` pairs the new post with the oldest unmatched post for the same `promptId` + `promptDateId` and writes a `MatchUps` doc, or marks the post `matched: false`.
+**Server-side logic (`functions/index.js`)**: Firestore triggers:
+- `createMatchup` (Posts created) pairs the new post with the oldest unmatched post for the same `promptId` + `promptDateId` in a transaction and writes an anonymous `MatchUps` doc (authors in `Private/owners`), or marks the post `matched: false`.
 - `onPostCreated` bumps the prompt's `counts.answers` and, in a transaction, the author's `FriendView/profile` `stats.answers` and streak string (`functions/promptDay.js`, the JS twin of `lib/data/prompt_day.dart`).
-Matchups exist only because of these triggers. The app itself does not read `MatchUps` yet: the feed is built from `Posts` via `getPosts`.
+- `onVoteCreated` (Votes created) counts the vote on the matchup and the two posts.
+- `onCommentPageWritten` keeps an answer's `commentCount` and `preview` on the post and its matchups.
+Matchups exist only because of these triggers. The Past feed is still built from `Posts` via `getPosts`.
 
-**Rules/config**: `firestore.rules`, `storage.rules`, `firestore.indexes.json`, all wired up in `firebase.json`. `firestore.rules` has explicit rules for the slice-1 collections (prompts and likes, usernames, FriendView, Private, History, new posts) and leaves the legacy collections open to signed-in users; anything else is denied.
+**Rules/config**: `firestore.rules`, `storage.rules`, `firestore.indexes.json`, all wired up in `firebase.json`. `firestore.rules` has explicit rules for the slice-1 and slice-2 collections (prompts and likes, usernames, FriendView, Private, History, new posts, MatchUps, Votes, Dislikes, CommentPages) and leaves the legacy collections open to signed-in users; anything else is denied.
 
 **UI conventions**: shared widgets live in `lib/CustomReusableWidgets/`. The theme is in `lib/Theme/theme.dart` (dark theme only), with custom fonts OpenSans, Livvic and NewAmsterdam. Shared copy is in `lib/pages/constant_strings.dart`.
 
@@ -100,7 +102,8 @@ Matchups exist only because of these triggers. The app itself does not read `Mat
 Planned features and design decisions (prompt types, Create-tab swiping, Home swipe voting, past responses feed, prompt lifetimes) are in `TODO.md`. The planned Firestore layout (collections, rules, who writes what, read/write costs) is in `docs/data-model.md`; the current layout is summarized at its end.
 
 - Deployed functions don't match the repo (checked 2026-11-08 with `firebase functions:list`). Production has only `checkUsername`, a v1 callable on Node 18 whose source was never committed. `createMatchup` and `incrementPrompt` have never been deployed, so production posts get no matchups and no response counts. The app doesn't call `checkUsername`; signup claims `Usernames/{name}` in a transaction instead.
-- `createMatchup` queries Posts on `promptId`, `promptDateId`, `matched` and orders by `date`. No composite index covers that, so it would fail in production; the emulator doesn't enforce indexes. The `random` index on Posts is unused by the app. Deployed indexes match `firestore.indexes.json`.
+- `firestore.indexes.json` now has the composite indexes `createMatchup`, the voting queue and `onCommentPageWritten` need, but none are deployed; the emulator doesn't enforce indexes. Production's indexes are the older set. The `random` index on Posts is unused by the app.
+- Seeded matchups belong to the prompt day the seed ran on, which rolls over at 05:00 UTC; after that Home shows nothing to vote on until the seed is re-run.
 - The repo's functions are on Node 20, but the deployed `checkUsername` is still Node 18.
 - All iOS plugins are Swift packages now, but `ios/` still has CocoaPods integration (`Podfile`, `Pods/`, includes in `Flutter/Debug.xcconfig` and `Release.xcconfig`). Flutter warns about it on every build; it is harmless but slows builds.
 - Logout (`lib/pages/accountpage/settings.dart`) navigates to `'/login'`, which is not a defined route, so the default route builds a second `MyApp` inside the first.

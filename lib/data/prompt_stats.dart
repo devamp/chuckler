@@ -23,13 +23,7 @@ import 'sample_prompts.dart';
 /// Which segment a prompt belongs to, from PromptDays/.../Prompts.location.
 /// (The prompt's type field held its format, not its segment.) Unknown or
 /// missing locations count as global.
-Segment segmentOf(DbPrompt prompt) {
-  return switch (prompt.location?.toLowerCase()) {
-    'friends' => Segment.friends,
-    'local' => Segment.local,
-    _ => Segment.global,
-  };
-}
+Segment segmentOf(DbPrompt prompt) => parseSegment(prompt.location);
 
 /// How the user's own answer to a prompt is doing
 class AnswerStats {

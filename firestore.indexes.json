@@ -57,6 +57,34 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "MatchUps",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "promptDateId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "MatchUps",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "postIds",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

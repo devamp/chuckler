@@ -20,10 +20,10 @@ class VotingService with ChangeNotifier {
   MatchupVote? voteFor(Matchup m) => _votes[m.id];
   bool hasVoted(Matchup m) => _votes.containsKey(m.id);
 
-  /// Replaces the queue, leaving out matchups that include the user's own
-  /// answer
-  void setMatchups(List<Matchup> matchups, String myUid){
-    _queue = matchups.where((m) => !m.includesUser(myUid)).toList();
+  /// Replaces the queue, leaving out matchups that include one of the
+  /// user's own answers (myPostIds)
+  void setMatchups(List<Matchup> matchups, Set<String> myPostIds){
+    _queue = matchups.where((m) => !m.includesAnyPost(myPostIds)).toList();
     _index = 0;
     _votes.clear();
     _loaded = true;
@@ -47,6 +47,27 @@ class VotingService with ChangeNotifier {
     }
     notifyListeners();
     return true;
+  }
+
+  /// Takes back a vote the server refused, undoing its local counts
+  void undoVote(Matchup m){
+    final v = _votes.remove(m.id);
+    if (v == null) return;
+    if (v.type == VoteType.win) {
+      m.answers[v.card].wins--;
+    } else {
+      m.answers[v.card].downvotes--;
+    }
+    notifyListeners();
+  }
+
+  /// Forgets the queue, so the next visit to Home loads it again
+  void logout(){
+    _queue = List.empty(growable: true);
+    _index = 0;
+    _votes.clear();
+    _loaded = false;
+    notifyListeners();
   }
 
   /// Moves to the next matchup: a skip before voting, "next" after

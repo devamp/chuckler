@@ -1,55 +1,163 @@
 const {getFirestore, FieldValue} = require("firebase-admin/firestore");
-const {onDocumentCreated} = require("firebase-functions/v2/firestore");
+const {
+  onDocumentCreated, onDocumentWritten,
+} = require("firebase-functions/v2/firestore");
 const {initializeApp} = require("firebase-admin/app");
 const {isDayId, markStreakDay} = require("./promptDay");
 initializeApp();
 const db = getFirestore();
 
 
-// createMatchups runs every time a new post occurs
-// creates matchup with unmatched post
-// and if no match exists sets the matched key to false.
+// Matchups pair two answers to the same prompt for voting. They carry no
+// uids or usernames, so vote cards are anonymous; Private/owners keeps the
+// authors for the server. See docs/data-model.md (MatchUps).
 
-exports.createMatchup = onDocumentCreated("Posts/{docid}", async (event) => {
-  const eData = event.data.data();
+/**
+ * One side of a new matchup.
+ * @param {string} postId
+ * @param {object} post
+ * @return {object}
+ */
+function matchupAnswer(postId, post) {
+  return {postId, answer: post.answer || "", wins: 0, dislikes: 0,
+    commentCount: post.commentCount || 0, preview: post.preview || []};
+}
+
+// createMatchup pairs a new post with the oldest unmatched post for the same
+// prompt, or marks it unmatched to wait for the next one. It runs in a
+// transaction, so two posts created together can't claim the same partner.
+exports.createMatchup = onDocumentCreated("Posts/{postId}", async (event) => {
+  const postId = event.params.postId;
+  const postRef = event.data.ref;
   try {
-    // Find a post that does not have a match up
-    const matchingPost = await db.collection("Posts")
-        .where("promptId", "==", eData.promptId)
-        .where("promptDateId", "==", eData.promptDateId)
-        .where("matched", "==", false)
-        .orderBy("date", "asc")
-        .limit(1).get();
-    // Check if a match up was found
-    if (matchingPost == null || matchingPost.empty) {
-      // eslint-disable-next-line max-len
-      await db.collection("Posts").doc(event.data.id).update({"matched": false});
-    } else {
-      // Create the match up and set the found posts matched flag to true
-      await matchingPost.docs[0].ref.update(
-          {"matched": true},
-      );
-      const mPD = matchingPost.docs[0].data();
-      await db.collection("MatchUps").doc().set({
-        answer1: eData.answer,
-        uid1: eData.uid,
-        postId1: event.data.id,
-        username1: eData.username,
-        wins1: 0,
-        answer2: mPD.answer,
-        uid2: mPD.uid,
-        username2: mPD.username,
-        postId2: matchingPost.docs[0].id,
-        wins2: 0,
-        views: 0,
-        promptId: eData.promptId,
-        promptDateId: mPD.promptDateId,
+    await db.runTransaction(async (tx) => {
+      const post = (await tx.get(postRef)).data();
+      // already handled (a retried event)
+      if (!post || post.matched !== undefined) return;
+      const {promptId, promptDateId} = post;
+      if (!promptId || !promptDateId) return;
+
+      const waiting = await tx.get(db.collection("Posts")
+          .where("promptId", "==", promptId)
+          .where("promptDateId", "==", promptDateId)
+          .where("matched", "==", false)
+          .orderBy("date", "asc")
+          .limit(1));
+      const other = waiting.docs.find((d) => d.id !== postId);
+      if (!other) {
+        tx.update(postRef, {matched: false});
+        return;
+      }
+      const prompt = (await tx.get(db.doc(
+          `PromptDays/${promptDateId}/Prompts/${promptId}`))).data() || {};
+      const otherPost = other.data();
+
+      const matchupRef = db.collection("MatchUps").doc();
+      // the waiting post goes on top, the new one below
+      tx.set(matchupRef, {
+        promptDateId, promptId,
+        before: prompt.before ?? post.before ?? "",
+        after: prompt.after ?? post.after ?? "",
+        segment: prompt.location || "global",
+        createdAt: FieldValue.serverTimestamp(),
+        status: "active",
+        postIds: [other.id, postId],
+        answers: [matchupAnswer(other.id, otherPost),
+          matchupAnswer(postId, post)],
       });
-    }
+      tx.set(matchupRef.collection("Private").doc("owners"),
+          {uids: [otherPost.uid, post.uid]});
+      for (const ref of [other.ref, postRef]) {
+        tx.update(ref, {
+          "matched": true,
+          "counts.matchups": FieldValue.increment(1),
+        });
+      }
+    });
   } catch (e) {
-    console.log(e);
+    console.log(`createMatchup: ${postId}: ${e}`);
   }
 });
+
+// onVoteCreated counts a vote on its matchup and on the two answers. A win
+// adds to the picked answer's wins; a downvote to its dislikes on the
+// matchup (the post's counts.dislikes was already added by the voter's
+// batch, next to their Dislikes doc). Until ranking checkpoints exist, the
+// posts' votes and wins are kept here too, so authors see their stats.
+exports.onVoteCreated = onDocumentCreated("Votes/{voteId}", async (event) => {
+  const vote = event.data.data();
+  const {matchupId, card, type} = vote;
+  if (!matchupId || (card !== 0 && card !== 1) ||
+      (type !== "win" && type !== "dislike")) {
+    console.log(`onVoteCreated: skipping malformed ${event.params.voteId}`);
+    return;
+  }
+  const matchupRef = db.collection("MatchUps").doc(matchupId);
+  try {
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(matchupRef);
+      if (!snap.exists) return;
+      const answers = snap.data().answers.map((a) => ({...a}));
+      const key = type === "win" ? "wins" : "dislikes";
+      answers[card][key] = (answers[card][key] || 0) + 1;
+      tx.update(matchupRef, {answers});
+      answers.forEach((a, i) => {
+        const update = {"counts.votes": FieldValue.increment(1)};
+        if (type === "win" && i === card) {
+          update["counts.wins"] = FieldValue.increment(1);
+        }
+        tx.update(db.collection("Posts").doc(a.postId), update);
+      });
+    });
+  } catch (e) {
+    console.log(`onVoteCreated: ${event.params.voteId}: ${e}`);
+  }
+});
+
+// How many of an answer's latest comments ride along on the post and its
+// matchups, so the preview after voting costs no reads.
+const PREVIEW_SIZE = 2;
+
+// onCommentPageWritten keeps an answer's comment count and preview on the
+// post and on the active matchups it's in, whenever a comment is added to
+// or removed from one of its CommentPages.
+exports.onCommentPageWritten = onDocumentWritten(
+    "Posts/{postId}/CommentPages/{page}", async (event) => {
+      const postId = event.params.postId;
+      const before = event.data.before.data()?.comments || {};
+      const after = event.data.after.data()?.comments || {};
+      const delta = Object.keys(after).length - Object.keys(before).length;
+      if (delta === 0) return;
+      try {
+        const postRef = db.collection("Posts").doc(postId);
+        const pages = await postRef.collection("CommentPages").get();
+        const all = [];
+        pages.forEach((p) => {
+          for (const c of Object.values(p.data().comments || {})) all.push(c);
+        });
+        all.sort((a, b) => a.at.toMillis() - b.at.toMillis());
+        const preview = all.slice(-PREVIEW_SIZE).map((c) => ({
+          username: c.username || "", text: c.text || "",
+        }));
+        const commentCount = all.length;
+
+        await postRef.update(
+            {commentCount, "counts.comments": commentCount, preview});
+        const matchups = await db.collection("MatchUps")
+            .where("postIds", "array-contains", postId)
+            .where("status", "==", "active").get();
+        for (const m of matchups.docs) {
+          await db.runTransaction(async (tx) => {
+            const snap = await tx.get(m.ref);
+            const answers = snap.data().answers.map((a) =>
+              a.postId === postId ? {...a, commentCount, preview} : a);
+            tx.update(m.ref, {answers});
+          });
+        }
+      } catch (e) {
+        console.log(`onCommentPageWritten: ${postId}: ${e}`);
+      }
+    });
 
 // onPostCreated keeps the server-side counts for a new answer:
 // - the prompt's counts.answers

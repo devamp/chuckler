@@ -57,13 +57,17 @@ A matchup shows two answer cards stacked vertically.
 - Accept swipes only when they start on the cards, away from the screen edges, so they don't collide with the iOS home and Notification Center gestures.
 - Each card shows whether the answer is from a friend, local or global. Not filtered by default; the user can filter to specific types. Friend and Local are relative to the viewer, so the tag is worked out per viewer, not stored on the post.
 
-**Built so far (sample data, no Firestore yet):** the Vote | Past toggle on Home, the swipe screen (`lib/pages/feedpage/feedpage_vote.dart`, `feedpage_vote_card.dart`), `VotingService`, results, the one-time tutorial and a placeholder for answer comments. `lib/data/matchups.dart` holds `TODO(cloud)` notes for the real queries, Votes collection, rules and Cloud Functions.
+**Built so far (live in the emulator):** the Vote | Past toggle on Home, the swipe screen (`lib/pages/feedpage/feedpage_vote.dart`, `feedpage_vote_card.dart`), `VotingService`, results and the one-time tutorial. Today's matchups come from `MatchUps` (anonymous: no author on the cards), votes are saved once per user in `Votes` (refused votes are taken back with a message), a downvote leaves an anonymous dislike, and answer comments (`feedpage_comments.dart`) read and write `Posts/{id}/CommentPages`; the preview after voting shows the comment count and latest comment. The caught-up screen can check for new matchups.
+
+**Still to do:**
+- Order the queue by ranking score once checkpoints exist; load more than 50 matchups.
+- The Segment filter on Home and the friend/local tag per viewer (friends by uid).
+- Undoing a dislike from the Past feed, and liking answers.
 
 **Today:**
-- The Past view is the existing feed, built from `Posts` via `getPosts`. The app does not read `MatchUps` yet; the Cloud Function `createMatchup` writes them, but functions do not run on the free Spark plan (they do in the emulator).
+- The Past view is the existing feed, built from `Posts` via `getPosts`, with the old comment form (its calls are commented out).
 - The Global/Local/Friends dropdown (`DropdownButtonExample` in `feed_page.dart`) only changes its own label.
-- `likeAPost` and `postWin` exist in `lib/data/posts.dart`, but every call to them is commented out, and `likeAPost` increments a counter without awaiting it. Neither supports one-vote-per-user.
-- Comments are stored one doc per comment (`Comments` keyed by `postId`). The plan moves them into pages of ~200 under each post (`Posts/{id}/CommentPages`).
+- `likeAPost` and `postWin` in `lib/data/posts.dart` are legacy and unused.
 
 ## 3. Past responses feed
 

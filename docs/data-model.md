@@ -300,7 +300,13 @@ Slice 1 (the Create tab) runs on this layout in the local emulator:
 - `Usernames`, claimed in a transaction at signup.
 - `Users/{uid}` still carries the legacy fields (friend lists by username, post count) until the friends slice.
 
-Not live yet: matchups and votes, comments, friends by uid, friend prompts, Past results.
+Slice 2 (Home voting and answer comments):
+- `MatchUps`, written by `createMatchup` in a transaction (no two posts claim the same partner), with `Private/owners` for the authors' uids. Matchups also carry `postIds` (the two post ids), which the comment rule and the comment function look up. The app reads today's matchups by `promptDateId` ordered by `createdAt`, and leaves out its own answers (known from History) and matchups it already voted on.
+- `Votes/{matchupId}_{uid}`, create only. A downvote is one batch with `Dislikes/{postId}_{uid}` and the post's `counts.dislikes`. Rules refuse voting on a matchup with your own answer.
+- `onVoteCreated` counts the vote on the matchup's answer. Until ranking checkpoints exist it also adds to the posts' `counts.votes` and `counts.wins` (and `createMatchup` to `counts.matchups`), so the Create tab's answer stats are live; `rank` stays 0.
+- `Posts/{postId}/CommentPages/{n}` (pages "0", "1", …) with a `last` field naming the comment just added, which the rule checks. `onCommentPageWritten` keeps `commentCount` and `preview` on the post and its active matchups.
+
+Not live yet: ranking and checkpoints, friends by uid, friend prompts, Past results, prompt dislikes, undoing a dislike.
 
 ## Before the new layout
 

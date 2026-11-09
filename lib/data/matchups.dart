@@ -1,42 +1,67 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'sample_matchups.dart';
+import 'prompt_day.dart';
 
-// Swipe voting on the Home tab. This file runs on sample data for now; the
-// TODO(cloud) notes list what the real queries and Cloud Functions need.
+// Swipe voting on the Home tab, on the layout in docs/data-model.md
+// (MatchUps, Votes, Dislikes). Matchups are written by the createMatchup
+// Cloud Function and carry no uids or usernames, so vote cards are anonymous.
 //
-// TODO(cloud): the planned layout is in docs/data-model.md. MatchUps
-// documents (written by createMatchup in functions/index.js) need:
-//   - an answers list of {postId, answer, wins, dislikes, commentCount,
-//     preview}, with no uids or usernames: vote cards are anonymous. The
-//     authors' uids move to MatchUps/{id}/Private/owners (server only).
-//   - dislikes per answer (a downvote is a dislike); only wins exist today
-//   - a created date, to order matchups and to scope "today"
-//   - the prompt's before/after text and segment, so voting needs no joins
-//   - no views counter: ranking uses votes
-// createMatchup should also pair posts inside a transaction: two posts
-// created at the same moment can currently claim the same unmatched post.
+// Still to come:
+//   - ranking: order matchups by score instead of age, once checkpoints
+//     exist (TODO.md section 4)
+//   - paging: load the next 50 when the queue runs low
+//   - friends-only matchups for friend prompts (needs friends by uid)
 
 /// Which kind of prompt a matchup belongs to. Friends and local are relative
 /// to the viewer, so the real value is worked out per viewer.
 enum Segment { friends, local, global }
 
-/// One of the two answers in a matchup
+/// A prompt's or matchup's stored location as a segment. Unknown or missing
+/// values count as global.
+Segment parseSegment(String? location) => switch (location?.toLowerCase()) {
+      'friends' => Segment.friends,
+      'local' => Segment.local,
+      _ => Segment.global,
+    };
+
+/// One of the latest comments on an answer, copied into the matchup
+class CommentPreview {
+  final String username;
+  final String text;
+
+  const CommentPreview(this.username, this.text);
+}
+
+/// One of the two answers in a matchup. No author: votes are anonymous.
 class MatchupAnswer {
   final String postId;
-  final String uid;
-  final String username;
   final String answer;
   int wins;
   int downvotes;
+  final int commentCount;
+  final List<CommentPreview> preview;
 
   MatchupAnswer({
     required this.postId,
-    required this.uid,
-    required this.username,
     required this.answer,
     this.wins = 0,
     this.downvotes = 0,
+    this.commentCount = 0,
+    this.preview = const [],
   });
+
+  factory MatchupAnswer.fromMap(Map<String, dynamic> m) => MatchupAnswer(
+        postId: m['postId'] as String? ?? '',
+        answer: m['answer'] as String? ?? '',
+        wins: (m['wins'] as num?)?.toInt() ?? 0,
+        downvotes: (m['dislikes'] as num?)?.toInt() ?? 0,
+        commentCount: (m['commentCount'] as num?)?.toInt() ?? 0,
+        preview: [
+          for (final p in (m['preview'] as List?) ?? const [])
+            if (p is Map)
+              CommentPreview(
+                  p['username'] as String? ?? '', p['text'] as String? ?? ''),
+        ],
+      );
 }
 
 /// Two answers to the same prompt, shown as stacked cards
@@ -62,7 +87,25 @@ class Matchup {
     required MatchupAnswer bottom,
   }) : answers = [top, bottom];
 
-  bool includesUser(String uid) => answers.any((a) => a.uid == uid);
+  /// A MatchUps doc, or null if it doesn't hold two answers
+  static Matchup? fromDoc(String id, Map<String, dynamic> data) {
+    final answers = (data['answers'] as List?) ?? const [];
+    if (answers.length != 2 || answers.any((a) => a is! Map)) return null;
+    return Matchup(
+      id: id,
+      promptId: data['promptId'] as String? ?? '',
+      promptDateId: data['promptDateId'] as String? ?? '',
+      promptBefore: data['before'] as String? ?? '',
+      promptAfter: data['after'] as String? ?? '',
+      segment: parseSegment(data['segment'] as String?),
+      top: MatchupAnswer.fromMap(Map<String, dynamic>.from(answers[0])),
+      bottom: MatchupAnswer.fromMap(Map<String, dynamic>.from(answers[1])),
+    );
+  }
+
+  /// One of the user's own answers is in this matchup
+  bool includesAnyPost(Set<String> postIds) =>
+      answers.any((a) => postIds.contains(a.postId));
 
   /// Share of wins that went to answers[card], rounded to a whole percent.
   /// Downvotes don't count toward either side.
@@ -84,36 +127,65 @@ class MatchupVote {
   const MatchupVote(this.card, this.type);
 }
 
-/// Matchups to vote on today, across all of today's prompts.
+/// How many matchups one load fetches
+const int matchupPageSize = 50;
+
+/// Today's matchups the user can still vote on, oldest first: not ones with
+/// their own answers (myPostIds) and not ones they already voted on.
 Future<List<Matchup>> getVotingMatchups(
-    FirebaseFirestore firestore, String uid) async {
-  // TODO(cloud): replace the sample data with a MatchUps query.
-  //   - Query MatchUps where promptDateId == today's PromptDays id (needs an
-  //     index on promptDateId, plus the ranking field once ranking exists).
-  //   - Drop matchups that include the user's own answer. Firestore can't
-  //     express "uid1 != me and uid2 != me", so filter after the query.
-  //   - Drop matchups the user already voted on: read Votes where
-  //     uid == me and promptDateId == today, so Votes docs need promptDateId.
-  //   - Decide a page size and load more as the queue runs low.
-  return sampleMatchups();
+    FirebaseFirestore firestore, String uid, Set<String> myPostIds,
+    {DateTime? now}) async {
+  final dayId = promptDayId((now ?? DateTime.now()).toUtc());
+  final matchups = await firestore
+      .collection('MatchUps')
+      .where('promptDateId', isEqualTo: dayId)
+      .orderBy('createdAt')
+      .limit(matchupPageSize)
+      .get();
+  // one read per vote today; the vote doc ids are matchupId_uid
+  final votes = await firestore
+      .collection('Votes')
+      .where('uid', isEqualTo: uid)
+      .where('promptDateId', isEqualTo: dayId)
+      .get();
+  final voted = {for (final v in votes.docs) v.data()['matchupId'] as String?};
+
+  return [
+    for (final doc in matchups.docs)
+      if (!voted.contains(doc.id))
+        if (Matchup.fromDoc(doc.id, doc.data()) case final m?)
+          if (!m.includesAnyPost(myPostIds)) m,
+  ];
 }
 
-/// Records a vote. Votes are final, so a second vote on the same matchup
-/// must be refused.
+/// Records a vote, final once written: the rules refuse a second vote on the
+/// same matchup. A downvote also leaves an anonymous dislike on that answer
+/// (Dislikes/{postId}_{uid} plus the post's counts.dislikes, in the same
+/// batch). The onVoteCreated Cloud Function then counts the vote on the
+/// matchup and the answers. Throws if the write is refused.
 Future<void> castVote(FirebaseFirestore firestore, String uid,
     Matchup matchup, MatchupVote vote) async {
-  // TODO(cloud): write Votes/{matchupId}_{uid} with
-  //   {uid, matchupId, promptDateId, card, type ('win' | 'dislike'), at}.
-  //   - A downvote is an anonymous dislike on that answer: in the same
-  //     batch, create Dislikes/{postId}_{uid} (readable only by the voter)
-  //     and add 1 to Posts/{postId}.counts.dislikes. The fixed doc id means
-  //     an answer is disliked once, whether in voting or in the Past feed,
-  //     and the author only ever sees the count. Also remember it on the
-  //     phone for the "what I disliked" list. See docs/data-model.md.
-  //   - Firestore rules: allow create when request.auth.uid == uid and the
-  //     doc does not exist; never allow update or delete.
-  //   - Counters: a Cloud Function on Votes create increments the matchup's
-  //     wins or dislikes for that answer, so clients can't edit counts
-  //     (rules deny client writes to MatchUps). Post totals are added up at
-  //     checkpoints, not per vote.
+  final dislike = vote.type == VoteType.downvote;
+  final postId = matchup.answers[vote.card].postId;
+  final batch = firestore.batch();
+  batch.set(firestore.collection('Votes').doc('${matchup.id}_$uid'), {
+    'uid': uid,
+    'matchupId': matchup.id,
+    'card': vote.card,
+    'type': dislike ? 'dislike' : 'win',
+    'promptDateId': matchup.promptDateId,
+    'at': FieldValue.serverTimestamp(),
+  });
+  if (dislike) {
+    batch.set(firestore.collection('Dislikes').doc('${postId}_$uid'), {
+      'uid': uid,
+      'targetId': postId,
+      'targetType': 'post',
+      'matchupId': matchup.id,
+      'at': FieldValue.serverTimestamp(),
+    });
+    batch.update(firestore.collection('Posts').doc(postId),
+        {'counts.dislikes': FieldValue.increment(1)});
+  }
+  await batch.commit();
 }

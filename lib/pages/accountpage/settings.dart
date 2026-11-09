@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 
 import '../../state/create_service.dart';
 import '../../state/prompt_service.dart';
+import '../../state/voting_service.dart';
 
 class Settings extends StatelessWidget {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -55,6 +56,7 @@ class Settings extends StatelessWidget {
                               PromptService promptService = Provider.of<PromptService>(context, listen: false);
                               promptService.logout();
                               Provider.of<CreateService>(context, listen: false).logout();
+                              Provider.of<VotingService>(context, listen: false).logout();
                               await _auth.signOut();
                               Navigator.pushReplacementNamed(context, '/login');
                             },

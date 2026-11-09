@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../CustomReusableWidgets/segment_chip.dart';
 import '../../data/matchups.dart';
 
-/// One answer in a matchup. Swipe right to pick it as the winner, left to
+/// One answer in a matchup, without its author. Swipe right to pick it as the winner, left to
 /// downvote it. After the user votes it shows the results instead.
 class VoteCard extends StatefulWidget {
   final MatchupAnswer answer;
@@ -113,15 +113,8 @@ class _VoteCardState extends State<VoteCard>
                   children: [
                     Row(
                       children: [
+                        // no author: vote cards are anonymous
                         SegmentChip(segment: widget.segment),
-                        const Spacer(),
-                        Text(
-                          widget.answer.username,
-                          style: TextStyle(
-                              color: widget.accent,
-                              fontFamily: 'OpenSans',
-                              fontWeight: FontWeight.bold),
-                        ),
                       ],
                     ),
                     Expanded(

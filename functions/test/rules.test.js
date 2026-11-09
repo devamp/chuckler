@@ -419,13 +419,224 @@ describe("other collections", () => {
     await assertSucceeds(setDoc(doc(as("alice"), "Comments/c1"), {x: 1}));
     await assertSucceeds(setDoc(doc(as("alice"), "Notifications/n1"),
         {x: 1}));
-    await assertSucceeds(setDoc(doc(as("alice"), "MatchUps/m1"), {x: 1}));
     const db = env.unauthenticatedContext().firestore();
     await assertFails(getDoc(doc(db, "Comments/c1")));
   });
 
   it("denies anything not matched", async () => {
     await assertFails(setDoc(doc(as("alice"), "Votes/v1"), {x: 1}));
+    await assertFails(setDoc(doc(as("alice"), "Elsewhere/x"), {x: 1}));
     await assertFails(getDoc(doc(as("alice"), "Somewhere/else")));
+  });
+});
+
+// ---- Slice 2: voting, dislikes, comments ----------------------------------
+
+const MATCHUP = "MatchUps/m1";
+
+/**
+ * Seeds a matchup between bob's and carol's posts.
+ */
+async function seedMatchup() {
+  await seed({
+    "Posts/carols": newPost("carol"),
+    [MATCHUP]: {
+      promptDateId: "2026-11-08", promptId: "p1", before: "My ",
+      after: " is ready.", segment: "global", status: "active",
+      postIds: ["bobs", "carols"],
+      answers: [
+        {postId: "bobs", answer: "a goose", wins: 0, dislikes: 0},
+        {postId: "carols", answer: "a goose", wins: 0, dislikes: 0},
+      ],
+    },
+    [`${MATCHUP}/Private/owners`]: {uids: ["bob", "carol"]},
+  });
+}
+
+/**
+ * A vote doc by `uid` on m1.
+ * @param {string} uid
+ * @param {object} extra
+ * @return {object}
+ */
+function vote(uid, extra = {}) {
+  return {uid, matchupId: "m1", card: 0, type: "win",
+    promptDateId: "2026-11-08", at: new Date(), ...extra};
+}
+
+/**
+ * The app's downvote batch: vote, dislike and the post's count.
+ * @param {object} db
+ * @param {string} uid
+ * @param {number} card
+ * @return {Promise}
+ */
+function downvote(db, uid, card = 0) {
+  const postId = card === 0 ? "bobs" : "carols";
+  const b = writeBatch(db);
+  b.set(doc(db, `Votes/m1_${uid}`), vote(uid, {card, type: "dislike"}));
+  b.set(doc(db, `Dislikes/${postId}_${uid}`), {uid, targetId: postId,
+    targetType: "post", matchupId: "m1", at: new Date()});
+  b.update(doc(db, `Posts/${postId}`), {"counts.dislikes": increment(1)});
+  return b.commit();
+}
+
+describe("matchups", () => {
+  beforeEach(seedMatchup);
+
+  it("signed-in users read matchups but not their owners", async () => {
+    await assertSucceeds(getDoc(doc(as("alice"), MATCHUP)));
+    await assertFails(getDoc(doc(as("alice"), `${MATCHUP}/Private/owners`)));
+    await assertFails(getDoc(doc(as("bob"), `${MATCHUP}/Private/owners`)));
+  });
+
+  it("clients can't write matchups", async () => {
+    await assertFails(setDoc(doc(as("alice"), "MatchUps/m2"), {x: 1}));
+    await assertFails(updateDoc(doc(as("alice"), MATCHUP), {status: "x"}));
+  });
+});
+
+describe("votes", () => {
+  beforeEach(seedMatchup);
+
+  it("allows one win vote as yourself", async () => {
+    await assertSucceeds(setDoc(doc(as("alice"), "Votes/m1_alice"),
+        vote("alice")));
+  });
+
+  it("votes are final", async () => {
+    await assertSucceeds(setDoc(doc(as("alice"), "Votes/m1_alice"),
+        vote("alice")));
+    await assertFails(setDoc(doc(as("alice"), "Votes/m1_alice"),
+        vote("alice", {card: 1})));
+    await assertFails(updateDoc(doc(as("alice"), "Votes/m1_alice"),
+        {card: 1}));
+    await assertFails(deleteDoc(doc(as("alice"), "Votes/m1_alice")));
+  });
+
+  it("refuses votes as someone else or under the wrong id", async () => {
+    await assertFails(setDoc(doc(as("alice"), "Votes/m1_dan"),
+        vote("dan")));
+    await assertFails(setDoc(doc(as("alice"), "Votes/m1_dan"),
+        vote("alice")));
+    await assertFails(setDoc(doc(as("alice"), "Votes/m2_alice"),
+        vote("alice")));
+  });
+
+  it("refuses bad cards, types, days and missing matchups", async () => {
+    const db = as("alice");
+    await assertFails(setDoc(doc(db, "Votes/m1_alice"), vote("alice",
+        {card: 2})));
+    await assertFails(setDoc(doc(db, "Votes/m1_alice"), vote("alice",
+        {type: "superlike"})));
+    await assertFails(setDoc(doc(db, "Votes/m1_alice"), vote("alice",
+        {promptDateId: "2026-11-09"})));
+    await assertFails(setDoc(doc(db, "Votes/m9_alice"), vote("alice",
+        {matchupId: "m9"})));
+  });
+
+  it("refuses voting on a matchup with your own answer", async () => {
+    await assertFails(setDoc(doc(as("bob"), "Votes/m1_bob"), vote("bob")));
+  });
+
+  it("you can read your votes, not others'", async () => {
+    await seed({"Votes/m1_alice": vote("alice")});
+    await assertSucceeds(getDoc(doc(as("alice"), "Votes/m1_alice")));
+    await assertFails(getDoc(doc(as("dan"), "Votes/m1_alice")));
+  });
+});
+
+describe("dislikes", () => {
+  beforeEach(seedMatchup);
+
+  it("allows the app's downvote batch", async () => {
+    await assertSucceeds(downvote(as("alice"), "alice", 1));
+  });
+
+  it("a downvote vote needs its dislike in the same batch", async () => {
+    await assertFails(setDoc(doc(as("alice"), "Votes/m1_alice"),
+        vote("alice", {type: "dislike"})));
+  });
+
+  it("dislikes once per user", async () => {
+    await assertSucceeds(downvote(as("alice"), "alice"));
+    const db = as("alice");
+    const b = writeBatch(db);
+    b.set(doc(db, "Dislikes/bobs_alice"), {uid: "alice", targetId: "bobs",
+      targetType: "post", at: new Date()});
+    b.update(doc(db, "Posts/bobs"), {"counts.dislikes": increment(1)});
+    await assertFails(b.commit());
+  });
+
+  it("the count can't move without a new dislike doc", async () => {
+    await assertFails(updateDoc(doc(as("alice"), "Posts/bobs"),
+        {"counts.dislikes": increment(1)}));
+  });
+
+  it("the count moves by exactly 1", async () => {
+    const db = as("alice");
+    const b = writeBatch(db);
+    b.set(doc(db, "Dislikes/bobs_alice"), {uid: "alice", targetId: "bobs",
+      targetType: "post", at: new Date()});
+    b.update(doc(db, "Posts/bobs"), {"counts.dislikes": increment(5)});
+    await assertFails(b.commit());
+  });
+
+  it("only the disliker reads a dislike; nobody deletes it", async () => {
+    await assertSucceeds(downvote(as("alice"), "alice"));
+    await assertSucceeds(getDoc(doc(as("alice"), "Dislikes/bobs_alice")));
+    await assertFails(getDoc(doc(as("bob"), "Dislikes/bobs_alice")));
+    await assertFails(deleteDoc(doc(as("alice"), "Dislikes/bobs_alice")));
+  });
+
+  it("refuses a dislike in someone else's name", async () => {
+    await assertFails(setDoc(doc(as("alice"), "Dislikes/bobs_dan"),
+        {uid: "dan", targetId: "bobs", targetType: "post", at: new Date()}));
+  });
+});
+
+describe("comments", () => {
+  beforeEach(seedMatchup);
+
+  const PAGE = "Posts/bobs/CommentPages/0";
+
+  /**
+   * One comment by `uid`.
+   * @param {string} uid
+   * @param {object} extra
+   * @return {object}
+   */
+  function comment(uid, extra = {}) {
+    return {uid, username: uid, text: "lol", matchupId: "m1",
+      at: new Date(), ...extra};
+  }
+
+  it("voters can start a page and add to it", async () => {
+    await seed({"Votes/m1_alice": vote("alice"), "Votes/m1_dan": vote("dan")});
+    await assertSucceeds(setDoc(doc(as("alice"), PAGE),
+        {comments: {c1: comment("alice")}, last: "c1"}));
+    await assertSucceeds(updateDoc(doc(as("dan"), PAGE),
+        {"comments.c2": comment("dan"), "last": "c2"}));
+    await assertSucceeds(getDoc(doc(as("eve"), PAGE)));
+  });
+
+  it("only voters on a matchup with the answer can comment", async () => {
+    await assertFails(setDoc(doc(as("alice"), PAGE),
+        {comments: {c1: comment("alice")}, last: "c1"}));
+  });
+
+  it("refuses others' names, empty text, or edits", async () => {
+    await seed({"Votes/m1_alice": vote("alice"), "Votes/m1_dan": vote("dan"),
+      [PAGE]: {comments: {c1: comment("dan")}, last: "c1"}});
+    const db = as("alice");
+    await assertFails(updateDoc(doc(db, PAGE),
+        {"comments.c2": comment("dan"), "last": "c2"}));
+    await assertFails(updateDoc(doc(db, PAGE),
+        {"comments.c2": comment("alice", {text: ""}), "last": "c2"}));
+    await assertFails(updateDoc(doc(db, PAGE),
+        {"comments.c1": comment("alice"), "last": "c1"}));
+    await assertFails(updateDoc(doc(db, PAGE), {
+      "comments.c2": comment("alice"), "comments.c3": comment("alice"),
+      "last": "c2"}));
   });
 });

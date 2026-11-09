@@ -1,3 +1,5 @@
+import 'package:chuckler/data/matchups.dart';
+import 'package:chuckler/data/prompt_day.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Some queries fire writes without awaiting them; give those time to land.
@@ -42,4 +44,54 @@ Map<String, dynamic> postDoc({
     'promptDateId': promptDateId,
     'date': Timestamp.fromDate(date),
   };
+}
+
+/// A MatchUps doc as createMatchup writes it, from a Matchup
+Map<String, dynamic> matchupDoc(Matchup m,
+    {required String dayId, required DateTime createdAt}) {
+  return {
+    'promptDateId': dayId,
+    'promptId': m.promptId,
+    'before': m.promptBefore,
+    'after': m.promptAfter,
+    'segment': m.segment.name,
+    'createdAt': Timestamp.fromDate(createdAt),
+    'status': 'active',
+    'postIds': [for (final a in m.answers) a.postId],
+    'answers': [
+      for (final a in m.answers)
+        {
+          'postId': a.postId,
+          'answer': a.answer,
+          'wins': a.wins,
+          'dislikes': a.downvotes,
+          'commentCount': a.commentCount,
+          'preview': [
+            for (final p in a.preview) {'username': p.username, 'text': p.text}
+          ],
+        }
+    ],
+  };
+}
+
+/// Writes matchups into the fake Firestore for today's prompt day, in order,
+/// with a Posts doc for each answer unless [posts] is false
+Future<void> seedMatchups(FirebaseFirestore firestore, List<Matchup> matchups,
+    {DateTime? now, bool posts = true}) async {
+  final t = (now ?? DateTime.now()).toUtc();
+  final dayId = promptDayId(t);
+  for (var i = 0; i < matchups.length; i++) {
+    if (posts) {
+      for (final a in matchups[i].answers) {
+        await firestore.collection('Posts').doc(a.postId).set({
+          'answer': a.answer,
+          'counts': {'dislikes': a.downvotes, 'wins': a.wins},
+        });
+      }
+    }
+    await firestore.collection('MatchUps').doc(matchups[i].id).set(matchupDoc(
+        matchups[i],
+        dayId: dayId,
+        createdAt: t.subtract(Duration(minutes: matchups.length - i))));
+  }
 }

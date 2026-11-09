@@ -1,8 +1,11 @@
-// Widget tests for swipe voting on the Home tab, running on sample matchups.
+// Widget tests for swipe voting on the Home tab, with the sample matchups
+// stored in a fake Firestore.
 
+import 'package:chuckler/data/sample_matchups.dart';
 import 'package:chuckler/database/models.dart';
 import 'package:chuckler/pages/feedpage/feed_page.dart';
 import 'package:chuckler/pages/feedpage/feedpage_vote.dart';
+import 'package:chuckler/state/prompt_service.dart';
 import 'package:chuckler/state/session_service.dart';
 import 'package:chuckler/state/voting_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -11,13 +14,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../data/helpers.dart';
 import 'fonts.dart';
 
 void main() {
   late VotingService voting;
+  late FakeFirebaseFirestore firestore;
 
   Future<void> pumpVotePage(WidgetTester tester,
-      {bool tutorialSeen = true, Size size = const Size(393, 852)}) async {
+      {bool tutorialSeen = true,
+      Size size = const Size(393, 852),
+      bool posts = true}) async {
     SharedPreferences.setMockInitialValues(
         {voteTutorialSeenKey: tutorialSeen});
     tester.view.physicalSize = size * 3;
@@ -25,13 +32,17 @@ void main() {
     addTearDown(tester.view.reset);
 
     voting = VotingService();
+    firestore = FakeFirebaseFirestore();
+    await tester.runAsync(
+        () => seedMatchups(firestore, sampleMatchups(), posts: posts));
     final session = SessionService()
       ..setLoggedInUser(DbUser('me', 'caden', 0, 0, ''));
     await tester.pumpWidget(MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: session),
         ChangeNotifierProvider.value(value: voting),
-        Provider<FirebaseFirestore>.value(value: FakeFirebaseFirestore()),
+        ChangeNotifierProvider.value(value: PromptService()),
+        Provider<FirebaseFirestore>.value(value: firestore),
       ],
       child: const MaterialApp(home: Scaffold(body: VotePage())),
     ));
@@ -106,6 +117,90 @@ void main() {
     // a downvote adds no wins, so percentages stay 62 / 38
     expect(find.text('62% picked this'), findsOneWidget);
     expect(find.text('38% picked this'), findsOneWidget);
+  });
+
+  testWidgets('a refused vote is taken back with a message',
+      (tester) async {
+    // with no Posts docs the downvote's batch fails
+    await pumpVotePage(tester, posts: false);
+
+    await tester.drag(
+        answer('Okay, this is my first time without the simulator'),
+        const Offset(-300, 0));
+    await tester.pumpAndSettle();
+
+    expect(find.text("Your vote didn't go through"), findsOneWidget);
+    expect(voting.hasVoted(voting.current!), isFalse);
+    expect(find.byTooltip('Downvote this answer'), findsNWidgets(2));
+  });
+
+  testWidgets('votes are saved to Firestore', (tester) async {
+    await pumpVotePage(tester);
+    await tester.drag(
+        answer('Anyone know which button is autopilot?'), const Offset(300, 0));
+    await tester.pumpAndSettle();
+
+    final vote = await tester
+        .runAsync(() => firestore.doc('Votes/sample-1_me').get());
+    expect(vote!.data()!['type'], 'win');
+    expect(vote.data()!['card'], 0);
+  });
+
+  testWidgets('the comment sheet loads the thread and posts a comment',
+      (tester) async {
+    await pumpVotePage(tester);
+    await tester.runAsync(() => firestore
+            .collection('Posts')
+            .doc('s1a')
+            .collection('CommentPages')
+            .doc('0')
+            .set({
+          'comments': {
+            'c1': {
+              'uid': 'u-ben',
+              'username': 'ben',
+              'text': 'pilots hate this',
+              'at': Timestamp.fromDate(DateTime.utc(2026, 11, 8)),
+            },
+          },
+        }));
+    await tester.drag(
+        answer('Anyone know which button is autopilot?'), const Offset(300, 0));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Comments'));
+    await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 50)));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('pilots hate this', findRichText: true),
+        findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'same');
+    await tester.tap(find.byTooltip('Post comment'));
+    await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 50)));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('same', findRichText: true), findsOneWidget);
+    final page = await tester.runAsync(() => firestore
+        .doc('Posts/s1a/CommentPages/0')
+        .get());
+    expect((page!.data()!['comments'] as Map), hasLength(2));
+  });
+
+  testWidgets('the caught-up screen can check for new matchups',
+      (tester) async {
+    await pumpVotePage(tester);
+    for (var i = 0; i < 5; i++) {
+      await tester.tap(find.text('Skip'));
+      await tester.pumpAndSettle();
+    }
+    expect(find.text('Check for new matchups'), findsOneWidget);
+
+    await tester.tap(find.text('Check for new matchups'));
+    await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 50)));
+    await tester.pumpAndSettle();
+
+    // skipped matchups come back, since there's no vote on them
+    expect(voting.index, 0);
+    expect(voting.length, 5);
   });
 
   testWidgets('a short drag does not vote', (tester) async {
@@ -261,6 +356,7 @@ void main() {
         providers: [
           ChangeNotifierProvider.value(value: session),
           ChangeNotifierProvider.value(value: VotingService()),
+          ChangeNotifierProvider.value(value: PromptService()),
           Provider<FirebaseFirestore>.value(value: FakeFirebaseFirestore()),
         ],
         child: const MaterialApp(home: Scaffold(body: FeedPage())),
