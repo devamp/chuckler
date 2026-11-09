@@ -30,6 +30,13 @@
 //
 // Prompt days are relative to when you run this, so re-run it (and export
 // again) when the seeded days have passed.
+//
+// After the 05:00 UTC rollover, today's prompts have no answers and Home has
+// nothing to vote on. To fix that on running emulators without touching
+// accounts, prompts, friends or streaks, answer just today's prompts:
+//   FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 \
+//     FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
+//     npm --prefix functions run seed:answers
 
 const {initializeApp} = require("firebase-admin/app");
 const {getAuth} = require("firebase-admin/auth");
@@ -71,9 +78,41 @@ const TEST_USERS = [
   {uid: "test-hal", username: "hal", email: "hal@chuckler.test", age: 18},
 ];
 
-// Today's answers, one per test account (in TEST_USERS order) per prompt.
-const TODAY_ANSWERS = [
-  [
+// Answers to every seeded prompt, one per test account (in TEST_USERS
+// order), keyed by the prompt's opening text. Whichever prompts are live
+// today get answered from here.
+const ANSWERS = {
+  "The worst thing to say on a first date is ": [
+    "\"my mom picked this outfit\"",
+    "\"so anyway, my ex\"",
+    "\"do you want to split this 9 ways\"",
+    "\"I already named our kids\"",
+    "\"I'm technically still married\"",
+    "\"wait, which app was this\"",
+    "\"I brought my lawyer\"",
+    "\"same time next week?\" before the food comes",
+  ],
+  "My grandma's secret ingredient is ": [
+    "spite",
+    "a little bit of Pall Mall ash",
+    "store-bought, don't tell anyone",
+    "the neighbor's basil",
+    "three sticks of butter per serving",
+    "Mountain Dew",
+    "guilt",
+    "a recipe she stole in 1974",
+  ],
+  "Nobody at this school knows I ": [
+    "still sleep with a nightlight",
+    "run the anonymous confessions page",
+    "failed the swim test 4 times",
+    "am 31",
+    "live in the library",
+    "cried at the pep rally",
+    "can't actually read cursive",
+    "am the mascot",
+  ],
+  "The real reason dinosaurs went extinct: ": [
     "they missed the group project deadline",
     "a meteor, but it was a gender reveal",
     "they kept replying-all",
@@ -83,7 +122,7 @@ const TODAY_ANSWERS = [
     "Jurassic rent prices",
     "nobody told them about the asteroid group chat",
   ],
-  [
+  "My new year's resolution is to ": [
     "say \"per my last email\"",
     "microwave fish at work",
     "watch my own Instagram stories",
@@ -93,7 +132,7 @@ const TODAY_ANSWERS = [
     "buy candles",
     "check my ex's Spotify",
   ],
-  [
+  "The group chat went silent after I sent ": [
     "a voice memo of me chewing",
     "my screen time report",
     "\"who wants to see my feet\"",
@@ -103,7 +142,67 @@ const TODAY_ANSWERS = [
     "a 4-minute Minion video",
     "\"k\"",
   ],
-];
+  "A terrible name for a boat: ": [
+    "The Titanic 2",
+    "Leaky Lucy",
+    "Unsinkable (Probably)",
+    "Midlife Crisis",
+    "Her Alimony",
+    "Davy Jones' Locker Room",
+    "Sir Floats-a-Little",
+    "Reel Estate Debt",
+  ],
+  "This town's best-kept secret is ": [
+    "the mayor is three raccoons in a coat",
+    "the Applebee's never closes",
+    "the lake is actually a puddle",
+    "the speed limit signs are suggestions",
+    "the library has a bar in the back",
+    "everyone's dating the same guy",
+    "the water tower is hollow",
+    "nobody actually likes the parade",
+  ],
+  "The last thing I'd want my friends to find in my room: ": [
+    "my fan fiction folder",
+    "a shrine to my old crush",
+    "my mom",
+    "a signed Nickelback poster",
+    "my diary from last week",
+    "the 40 Crocs",
+    "my ex, hiding in the closet",
+    "a printed photo of my own LinkedIn",
+  ],
+  "If my dog could talk, the first thing it'd say is ": [
+    "\"I've seen what you do in the shower\"",
+    "\"the mailman and I are engaged\"",
+    "\"you call that a walk?\"",
+    "\"I ate your AirPods, both times\"",
+    "\"who's a good boy? Not you\"",
+    "\"I want a lawyer\"",
+    "\"that cat is my landlord\"",
+    "\"I'm actually a cat\"",
+  ],
+  "The local news headline nobody expected: ": [
+    "Goose Elected to School Board",
+    "Man Finally Reads Terms and Conditions",
+    "Local Mom Reaches Inbox Zero",
+    "Walmart Greeter Says Goodbye",
+    "Town Pothole Gets Its Own Zip Code",
+    "Area Teen Calls Grandma Unprompted",
+    "Weatherman Admits He Was Guessing",
+    "Pigeon Steals Entire Pizza, Shares It",
+  ],
+  "Our friend group's unofficial motto is ": [
+    "\"we'll Venmo you later\"",
+    "\"it's not a party until someone cries\"",
+    "\"who's driving?\" (nobody)",
+    "\"left on read, right on time\"",
+    "\"one more episode\"",
+    "\"it's giving debt\"",
+    "\"we don't talk about Cancun\"",
+    "\"plans are just suggestions\"",
+  ],
+};
 
 // 3 prompts per day: day offset -1 (yesterday) to +2.
 const PROMPTS = [
@@ -146,10 +245,74 @@ async function upsertAuthUser(auth, u) {
   }
 }
 
-/** Seeds everything. */
+/**
+ * Answers today's live prompts as every test account, written one at a time
+ * like the app's createPost (post + History entry) so the functions emulator
+ * pairs them into matchups in turn. Skips answers that already exist and
+ * prompts with no seeded answers.
+ * @param {object} db
+ * @param {string} today the prompt day id
+ * @return {Promise<number>} how many answers were written
+ */
+async function answerToday(db, today) {
+  const prompts = await db.collection(`PromptDays/${today}/Prompts`).get();
+  if (prompts.empty) {
+    throw new Error(`No prompts for today (${today}). Run the full seed.`);
+  }
+  let answers = 0;
+  for (const doc of prompts.docs) {
+    const promptId = doc.id;
+    const {before, after} = doc.data();
+    const texts = ANSWERS[before];
+    if (!texts) {
+      console.log(`  no seeded answers for "${before}", skipped`);
+      continue;
+    }
+    for (const [k, u] of TEST_USERS.entries()) {
+      const postRef = db.doc(`Posts/seed-${today}-${promptId}-${u.uid}`);
+      if ((await postRef.get()).exists) continue;
+      const answer = texts[k];
+      const at = Timestamp.fromDate(new Date(Date.now() - (60 - answers) *
+          60 * 1000));
+      const post = db.batch();
+      post.set(postRef, {
+        answer, uid: u.uid, username: u.username, promptId,
+        promptDateId: today, date: at, likes: 0, dislikes: 0, wins: 0,
+        random: Math.floor(Math.random() * 1000000),
+        before, after, status: "active",
+        counts: {matchups: 0, votes: 0, wins: 0, dislikes: 0, likes: 0,
+          comments: 0},
+      });
+      post.set(db.doc(`Users/${u.uid}/History/${today.substring(0, 7)}`), {
+        answers: {[`${today}_${promptId}`]: {
+          postId: postRef.id, promptDateId: today, promptId,
+          before, after, answer, at,
+        }},
+      }, {merge: true});
+      await post.commit();
+      answers++;
+      // give createMatchup a moment, so answers pair in order
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  }
+  return answers;
+}
+
+/** Seeds everything, or with --answers only today's answers. */
 async function main() {
   initializeApp({projectId: PROJECT_ID});
   const db = getFirestore();
+  const today = promptDayId(new Date());
+
+  // --answers: only answer today's prompts, leaving accounts, prompts and
+  // friends as they are. For when the day rolls over on running emulators.
+  if (process.argv.includes("--answers")) {
+    const answers = await answerToday(db, today);
+    console.log(`${answers} new answers to today's prompts (${today}) on ` +
+        `${process.env.FIRESTORE_EMULATOR_HOST}`);
+    return;
+  }
+
   const auth = getAuth();
   const batch = db.batch();
 
@@ -175,7 +338,6 @@ async function main() {
   }
 
   // Prompt days, relative to now.
-  const today = promptDayId(new Date());
   const days = [];
   PROMPTS.forEach((prompts, i) => {
     const dayId = addDays(today, i - 1);
@@ -217,38 +379,7 @@ async function main() {
 
   await batch.commit();
 
-  // Today's answers, written one at a time like the app's createPost (post
-  // + History entry) so the functions emulator handles each in turn.
-  let answers = 0;
-  for (const [j, prompt] of PROMPTS[1].entries()) {
-    const promptId = `p${j + 1}`;
-    for (const [k, u] of TEST_USERS.entries()) {
-      const postRef = db.doc(`Posts/seed-${today}-${promptId}-${u.uid}`);
-      if ((await postRef.get()).exists) continue;
-      const answer = TODAY_ANSWERS[j][k];
-      const at = Timestamp.fromDate(new Date(Date.now() - (60 - answers) *
-          60 * 1000));
-      const post = db.batch();
-      post.set(postRef, {
-        answer, uid: u.uid, username: u.username, promptId,
-        promptDateId: today, date: at, likes: 0, dislikes: 0, wins: 0,
-        random: Math.floor(Math.random() * 1000000),
-        before: prompt[0], after: prompt[1], status: "active",
-        counts: {matchups: 0, votes: 0, wins: 0, dislikes: 0, likes: 0,
-          comments: 0},
-      });
-      post.set(db.doc(`Users/${u.uid}/History/${today.substring(0, 7)}`), {
-        answers: {[`${today}_${promptId}`]: {
-          postId: postRef.id, promptDateId: today, promptId,
-          before: prompt[0], after: prompt[1], answer, at,
-        }},
-      }, {merge: true});
-      await post.commit();
-      answers++;
-      // give createMatchup a moment, so answers pair in order
-      await new Promise((r) => setTimeout(r, 300));
-    }
-  }
+  const answers = await answerToday(db, today);
 
   console.log(`Seeded project ${PROJECT_ID} on ` +
       `${process.env.FIRESTORE_EMULATOR_HOST}:`);
