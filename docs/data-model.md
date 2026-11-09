@@ -197,13 +197,14 @@ comments: { "c8f2": { uid, username, text, matchupId, at }, … }
 ### MatchUps
 
 ```
-promptDateId, promptId, before, after, segment, createdAt, status, score
+promptDateId, promptId, before, after, segment, scope, createdAt, status, score
 answers: [
   { postId, answer, wins, dislikes, commentCount, preview: [latest 2] },
   { postId, … },
 ]
 ```
 
+- `scope` is whom the prompt is for: `"public"` (daily prompts; missing counts as public) or `"friends"` (a friend prompt, once live). The Home filter shows All, Global (public) or Friends.
 - No uids or usernames, so voting is anonymous and renames never touch matchups. `Private/owners` holds the uids for the server (pairing, notifications).
 - **Authors are revealed after you vote.** `Authors/names` (`answers: [{username, photoUrl}, …]`, card order) is written by `createMatchup` and readable only when `Votes/{matchupId}_{you}` exists, so the cards show both authors once your vote (win or downvote) is saved. One read per vote.
 - The `postId` lets the app open an answer's comments, but strangers can't read `Posts/{id}`, so it never leads to the author.

@@ -306,14 +306,27 @@ class _VotePageState extends State<VotePage> {
   }
 
   Widget caughtUp() {
+    final voting = Provider.of<VotingService>(context, listen: false);
+    final filter = voting.filter;
+    final none = voting.countFor(filter) == 0;
+    final String message = switch ((filter, none)) {
+      (MatchupFilter.friends, true) =>
+        "No friend prompts to vote on yet.\nWhen your friends write prompts, "
+            "their matchups show up here.",
+      (MatchupFilter.global, true) =>
+        'No public matchups yet.\nThey show up as people answer.',
+      (MatchupFilter.all, true) =>
+        'No matchups yet.\nThey show up as people answer.',
+      _ => "You're all caught up!\nNew matchups show up as people answer.",
+    };
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(30),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              "You're all caught up!\nNew matchups show up as people answer.",
+            Text(
+              message,
               textAlign: TextAlign.center,
               style: TextStyle(
                   color: Colors.white, fontFamily: 'OpenSans', fontSize: 20),

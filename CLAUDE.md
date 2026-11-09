@@ -85,7 +85,7 @@ Tests run without Firebase: `test/data/` covers the query functions against `fak
 - `onFriendRequestCreated` and `onFriendWritten` notify about friend requests (by username) and new friends; `onFriendWritten` keeps `stats.friends`.
 - Stats changes go through `applyStats` in `functions/profile.js`, which awards any tier reached (`functions/awards.js`) and writes an award notification. `onVoteCreated` adds the winner's `stats.wins`.
 - `dailyResults` (scheduled 05:05 UTC) runs `finishDay` (`functions/results.js`): final stats into History and a results notification per author. The emulator doesn't run schedules: `FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 npm --prefix functions run finish-day [-- yyyy-MM-dd]` (default yesterday). `npm --prefix functions run recount` recomputes everyone's stats and awards.
-Matchups exist only because of these triggers. The Past feed is still built from `Posts` via `getPosts`.
+Matchups exist only because of these triggers. The Past feed is hidden for the first release (`showPastToggle` in `feed_page.dart`) and still built from `Posts` via `getPosts`.
 
 **Rules/config**: `firestore.rules`, `storage.rules`, `firestore.indexes.json`, all wired up in `firebase.json`. `firestore.rules` has explicit rules for the slice-1 and slice-2 collections (prompts and likes, usernames, FriendView, Private, History, Notifications, new posts, MatchUps, Votes, Dislikes, CommentPages, friends) and leaves the legacy collections open to signed-in users; anything else is denied.
 

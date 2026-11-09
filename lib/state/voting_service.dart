@@ -4,13 +4,20 @@ import '../data/matchups.dart';
 /// The swipe-voting queue on the Home tab: which matchup is showing, the
 /// user's votes, and the history the back button walks through
 class VotingService with ChangeNotifier {
+  /// every matchup loaded; _queue is the ones the filter shows
+  List<Matchup> _all = List.empty(growable: true);
   List<Matchup> _queue = List.empty(growable: true);
+  MatchupFilter _filter = MatchupFilter.all;
   int _index = 0;
   final Map<String, MatchupVote> _votes = {};
   final Map<String, List<MatchupAuthor>> _authors = {};
   bool _loaded = false;
 
   bool get loaded => _loaded;
+  MatchupFilter get filter => _filter;
+
+  /// how many loaded matchups a filter would show
+  int countFor(MatchupFilter f) => _all.where(f.shows).length;
   int get index => _index;
   int get length => _queue.length;
 
@@ -32,10 +39,22 @@ class VotingService with ChangeNotifier {
   /// Replaces the queue, leaving out matchups that include one of the
   /// user's own answers (myPostIds)
   void setMatchups(List<Matchup> matchups, Set<String> myPostIds){
-    _queue = matchups.where((m) => !m.includesAnyPost(myPostIds)).toList();
+    _all = matchups.where((m) => !m.includesAnyPost(myPostIds)).toList();
+    _queue = _all.where(_filter.shows).toList();
     _index = 0;
     _votes.clear();
     _loaded = true;
+    notifyListeners();
+  }
+
+  /// Shows only the matchups [f] lets through, from the first one not
+  /// voted on yet. Votes stay final across filters.
+  void setFilter(MatchupFilter f){
+    if (f == _filter) return;
+    _filter = f;
+    _queue = _all.where(f.shows).toList();
+    final firstOpen = _queue.indexWhere((m) => !hasVoted(m));
+    _index = firstOpen < 0 ? _queue.length : firstOpen;
     notifyListeners();
   }
 
@@ -72,7 +91,9 @@ class VotingService with ChangeNotifier {
 
   /// Forgets the queue, so the next visit to Home loads it again
   void logout(){
+    _all = List.empty(growable: true);
     _queue = List.empty(growable: true);
+    _filter = MatchupFilter.all;
     _index = 0;
     _votes.clear();
     _authors.clear();

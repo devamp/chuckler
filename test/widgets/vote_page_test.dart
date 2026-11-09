@@ -1,13 +1,18 @@
 // Widget tests for swipe voting on the Home tab, with the sample matchups
 // stored in a fake Firestore.
 
+import 'package:chuckler/data/matchups.dart';
 import 'package:chuckler/data/sample_matchups.dart';
 import 'package:chuckler/database/models.dart';
 import 'package:chuckler/pages/feedpage/feed_page.dart';
 import 'package:chuckler/pages/feedpage/feedpage_vote.dart';
+import 'package:chuckler/pages/feedpage/feedpage_comments.dart';
 import 'package:chuckler/state/prompt_service.dart';
 import 'package:chuckler/state/session_service.dart';
 import 'package:chuckler/state/voting_service.dart';
+import 'package:chuckler/state/friends_service.dart';
+import 'package:chuckler/pages/feedpage/matchup_filter.dart';
+import 'package:chuckler/pages/friends/public_profile_page.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -49,6 +54,7 @@ void main() {
         ChangeNotifierProvider.value(value: session),
         ChangeNotifierProvider.value(value: voting),
         ChangeNotifierProvider.value(value: PromptService()),
+        ChangeNotifierProvider.value(value: FriendsService()),
         Provider<FirebaseFirestore>.value(value: firestore),
       ],
       child: const MaterialApp(home: Scaffold(body: VotePage())),
@@ -182,8 +188,10 @@ void main() {
         findsOneWidget);
 
     await tester.enterText(find.byType(TextField), 'same');
+    await tester.pump();
     await tester.tap(find.byTooltip('Post comment'));
-    await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 50)));
+    await tester.pump();
+    await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 100)));
     await tester.pumpAndSettle();
     expect(find.textContaining('same', findRichText: true), findsOneWidget);
     final page = await tester.runAsync(() => firestore
@@ -393,7 +401,7 @@ void main() {
   });
 
   for (final size in const [Size(393, 852), Size(375, 667)]) {
-    testWidgets('Home opens on Vote, with the toggle fitting at $size',
+    testWidgets('Home opens on voting with the filter, no Past, at $size',
         (tester) async {
       await loadRealFonts();
       SharedPreferences.setMockInitialValues({voteTutorialSeenKey: true});
@@ -413,8 +421,9 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      expect(find.text('Vote'), findsOneWidget);
-      expect(find.text('Past'), findsOneWidget);
+      // the Past view is hidden for the first release
+      expect(find.text('Past'), findsNothing);
+      expect(find.text('All'), findsOneWidget);
       expect(find.byType(VotePage), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
@@ -430,6 +439,98 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('skyler'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the filter menu filters matchups', (tester) async {
+    await loadRealFonts();
+    SharedPreferences.setMockInitialValues({voteTutorialSeenKey: true});
+    voting = VotingService();
+    firestore = FakeFirebaseFirestore();
+    await tester.runAsync(() => seedMatchups(firestore, sampleMatchups()));
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(
+            value: SessionService()
+              ..setLoggedInUser(DbUser('me', 'caden', 0, 0, ''))),
+        ChangeNotifierProvider.value(value: voting),
+        ChangeNotifierProvider.value(value: PromptService()),
+        Provider<FirebaseFirestore>.value(value: firestore),
+      ],
+      child: const MaterialApp(home: Scaffold(body: FeedPage())),
+    ));
+    await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 50)));
+    await tester.pumpAndSettle();
+    expect(answer('Anyone know which button is autopilot?'), findsOneWidget);
+
+    await tester.tap(find.byType(MatchupFilterButton));
+    await tester.pumpAndSettle();
+    Finder menuItem(String label) => find.descendant(
+        of: find.byType(PopupMenuItem<MatchupFilter>),
+        matching: find.text(label));
+    expect(menuItem('All'), findsOneWidget);
+    expect(menuItem('Global'), findsOneWidget);
+    expect(find.text('Prompts your friends wrote'), findsOneWidget);
+    await tester.tap(menuItem('Friends'));
+    await tester.pumpAndSettle();
+    expect(voting.filter, MatchupFilter.friends);
+    expect(find.textContaining('No friend prompts to vote on yet'),
+        findsOneWidget);
+    expect(answer('Anyone know which button is autopilot?'), findsNothing);
+
+    await tester.tap(find.byType(MatchupFilterButton));
+    await tester.pumpAndSettle();
+    await tester.tap(menuItem('Global'));
+    await tester.pumpAndSettle();
+    expect(answer('Anyone know which button is autopilot?'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the comment sheet is half height and closes with its button',
+      (tester) async {
+    await pumpVotePage(tester);
+    await tester.drag(
+        answer('Anyone know which button is autopilot?'), const Offset(300, 0));
+    await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 50)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Comments'));
+    await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 50)));
+    await tester.pumpAndSettle();
+
+    final sheet = tester.getSize(find.byType(AnswerCommentsSheet));
+    expect(sheet.height, lessThanOrEqualTo(852 * 0.5 + 1));
+    expect(find.textContaining('Start the conversation'), findsOneWidget);
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AnswerCommentsSheet), findsNothing);
+  });
+
+  testWidgets("tapping an author opens their profile to add them",
+      (tester) async {
+    await pumpVotePage(tester);
+    await tester.runAsync(() async {
+      await firestore.doc('Usernames/skyler').set({'uid': 'u-sky'});
+      await firestore.doc('Users/u-sky').set({'username': 'skyler'});
+    });
+    await tester.drag(
+        answer('Anyone know which button is autopilot?'), const Offset(300, 0));
+    await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 50)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('skyler'));
+    await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 50)));
+    await tester.pumpAndSettle();
+    expect(find.byType(PublicProfilePage), findsOneWidget);
+    expect(find.textContaining('Become friends to see'), findsOneWidget);
+
+    await tester.tap(find.text('Add friend'));
+    await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 50)));
+    await tester.pumpAndSettle();
+    expect(find.text('Requested'), findsOneWidget);
+    final request = await tester.runAsync(
+        () => firestore.doc('Users/u-sky/FriendRequests/me').get());
+    expect(request!.exists, isTrue);
+    expect(request.data()!['username'], 'caden');
     expect(tester.takeException(), isNull);
   });
 }

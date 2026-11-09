@@ -97,6 +97,8 @@ class AwardBadge extends StatelessWidget {
         p.comingSoon ? p.track.tiers.first.name : (p.latest ?? p.shown).name;
     final next = p.next;
 
+    // Every badge has the same fixed slots (icon, two-line name, tier dots,
+    // progress), so badges in a row line up whatever they show.
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: () => _showDetails(context),
@@ -105,53 +107,78 @@ class AwardBadge extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                FaIcon(awardIcons[p.track.id] ?? defaultAwardIcon,
-                    size: 34, color: color),
-                if (p.comingSoon)
-                  const Positioned(
-                    right: -10,
-                    bottom: -4,
-                    child: Icon(Icons.lock, size: 16, color: Colors.white54),
-                  ),
-              ],
+            SizedBox(
+              width: 44,
+              height: 40,
+              child: Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.center,
+                children: [
+                  FaIcon(awardIcons[p.track.id] ?? defaultAwardIcon,
+                      size: 34, color: color),
+                  if (p.comingSoon)
+                    const Positioned(
+                      right: -4,
+                      bottom: -2,
+                      child:
+                          Icon(Icons.lock, size: 16, color: Colors.white54),
+                    ),
+                ],
+              ),
             ),
-            const SizedBox(height: 8),
-            Text(name,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    color: p.comingSoon ? Colors.white54 : Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14)),
-            const SizedBox(height: 4),
-            if (p.comingSoon)
-              const Text('Coming soon',
-                  style: TextStyle(color: Colors.white38, fontSize: 12))
-            else ...[
-              if (p.track.tiers.length > 1) _tierDots(),
-              if (next != null) ...[
-                const SizedBox(height: 4),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(3),
-                  child: LinearProgressIndicator(
-                    value: p.fraction,
-                    minHeight: 5,
-                    color: _gold,
-                    backgroundColor: Colors.white12,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text('${p.value} / ${next.at}',
-                    style:
-                        const TextStyle(color: Colors.white60, fontSize: 12)),
-              ] else
-                const Text('Complete',
-                    style: TextStyle(color: _gold, fontSize: 12)),
-            ],
+            const SizedBox(height: 6),
+            SizedBox(
+              height: 38,
+              child: Center(
+                child: Text(name,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        color: p.comingSoon ? Colors.white54 : Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        height: 1.2)),
+              ),
+            ),
+            SizedBox(
+              height: 11,
+              child: !p.comingSoon && p.track.tiers.length > 1
+                  ? _tierDots()
+                  : null,
+            ),
+            SizedBox(
+              height: 26,
+              child: p.comingSoon
+                  ? const Center(
+                      child: Text('Coming soon',
+                          style:
+                              TextStyle(color: Colors.white38, fontSize: 12)))
+                  : next != null
+                      ? Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(3),
+                              child: LinearProgressIndicator(
+                                value: p.fraction,
+                                minHeight: 5,
+                                color: _gold,
+                                backgroundColor: Colors.white12,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text('${p.value} / ${next.at}',
+                                style: const TextStyle(
+                                    color: Colors.white60,
+                                    fontSize: 12,
+                                    height: 1.1)),
+                          ],
+                        )
+                      : const Center(
+                          child: Text('Complete',
+                              style: TextStyle(color: _gold, fontSize: 12))),
+            ),
           ],
         ),
       ),

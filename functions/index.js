@@ -69,6 +69,10 @@ exports.createMatchup = onDocumentCreated("Posts/{postId}", async (event) => {
         before: prompt.before ?? post.before ?? "",
         after: prompt.after ?? post.after ?? "",
         segment: prompt.location || "global",
+        // who the prompt is for: daily prompts are public; matchups for
+        // friend prompts (not live yet) will be "friends", seen only by
+        // the creator's friends. The Home filter splits on this.
+        scope: "public",
         createdAt: FieldValue.serverTimestamp(),
         status: "active",
         postIds: [other.id, postId],

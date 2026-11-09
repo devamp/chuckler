@@ -61,12 +61,13 @@ A matchup shows two answer cards stacked vertically.
 
 **Still to do:**
 - Order the queue by ranking score once checkpoints exist; load more than 50 matchups.
-- The Segment filter on Home and the friend/local tag per viewer (friends by uid).
+- The friend/local tag per viewer (friends by uid). *Built:* the filter at the top left of Home (All, Global, Friends) filters by the matchup's `scope`: Global is public daily prompts, Friends is friend prompts. Friends stays empty until friend prompts are written to Firestore, with `scope: "friends"` on their matchups.
+- Daily prompts still carry a `location` of global, local or friends (the seed rotates them), which the card's segment chip shows. Now that Friends means friend prompts, daily prompts probably shouldn't be tagged "friends".
 - Undoing a dislike from the Past feed, and liking answers.
 
 **Today:**
-- The Past view is the existing feed, built from `Posts` via `getPosts`, with the old comment form (its calls are commented out).
-- The Global/Local/Friends dropdown (`DropdownButtonExample` in `feed_page.dart`) only changes its own label.
+- The Past view is hidden for the first release (`showPastToggle` in `feed_page.dart`); its code stays. It is the existing feed, built from `Posts` via `getPosts`, with the old comment form (its calls are commented out).
+- After voting, tapping an author opens their profile (`lib/pages/friends/public_profile_page.dart`): username and photo, Add friend (or Accept, Requested, Friends), and for friends their posts, wins, streak and awards.
 - `likeAPost` and `postWin` in `lib/data/posts.dart` are legacy and unused.
 
 ## 3. Past responses feed

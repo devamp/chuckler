@@ -136,4 +136,83 @@ void main() {
     expect(s.index, 0);
     expect(notified, 0);
   });
+
+  group('filter', () {
+    /// sample matchups with the last two for friend prompts
+    List<Matchup> mixed() {
+      final all = sampleMatchups();
+      return [
+        for (int i = 0; i < all.length; i++)
+          i < all.length - 2
+              ? all[i]
+              : Matchup(
+                  id: all[i].id,
+                  promptId: all[i].promptId,
+                  promptDateId: all[i].promptDateId,
+                  promptBefore: all[i].promptBefore,
+                  promptAfter: all[i].promptAfter,
+                  segment: all[i].segment,
+                  scope: MatchupScope.friends,
+                  top: all[i].answers[0],
+                  bottom: all[i].answers[1]),
+      ];
+    }
+
+    test('All shows everything, Global public, Friends friend prompts', () {
+      s.setMatchups(mixed(), {});
+      expect(s.filter, MatchupFilter.all);
+      expect(s.length, 5);
+      expect(s.countFor(MatchupFilter.global), 3);
+      expect(s.countFor(MatchupFilter.friends), 2);
+
+      s.setFilter(MatchupFilter.friends);
+      expect(s.length, 2);
+      expect(s.current!.scope, MatchupScope.friends);
+
+      s.setFilter(MatchupFilter.global);
+      expect(s.length, 3);
+      expect(s.current!.id, 'sample-1');
+    });
+
+    test('switching skips matchups already voted on; votes stay', () {
+      s.setMatchups(mixed(), {});
+      s.setFilter(MatchupFilter.global);
+      s.vote(0, VoteType.win);
+      s.setFilter(MatchupFilter.all);
+      expect(s.current!.id, 'sample-2'); // sample-1 is voted
+      expect(s.hasVoted(sampleMatchups().first), isTrue);
+      s.setFilter(MatchupFilter.global);
+      expect(s.current!.id, 'sample-2');
+      expect(s.canGoBack, isTrue); // the voted one is still behind
+    });
+
+    test('the filter survives a reload and resets on logout', () {
+      s.setMatchups(mixed(), {});
+      s.setFilter(MatchupFilter.friends);
+      s.setMatchups(mixed(), {});
+      expect(s.length, 2);
+      s.logout();
+      expect(s.filter, MatchupFilter.all);
+    });
+
+    test('a matchup without a scope is public', () {
+      final m = Matchup.fromDoc('x', {
+        'answers': [
+          {'postId': 'a', 'answer': 'a'},
+          {'postId': 'b', 'answer': 'b'},
+        ],
+      })!;
+      expect(m.scope, MatchupScope.public);
+      final f = Matchup.fromDoc('y', {
+        'scope': 'friends',
+        'answers': [
+          {'postId': 'a', 'answer': 'a'},
+          {'postId': 'b', 'answer': 'b'},
+        ],
+      })!;
+      expect(f.scope, MatchupScope.friends);
+      expect(MatchupFilter.friends.shows(f), isTrue);
+      expect(MatchupFilter.global.shows(f), isFalse);
+    });
+  });
 }

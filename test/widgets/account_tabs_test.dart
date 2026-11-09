@@ -7,6 +7,7 @@ import 'package:chuckler/data/awards.dart';
 import 'package:chuckler/data/prompt_day.dart';
 import 'package:chuckler/database/models.dart';
 import 'package:chuckler/pages/accountpage/account.dart';
+import 'package:chuckler/pages/accountpage/account_awards.dart';
 import 'package:chuckler/pages/accountpage/account_posts.dart';
 import 'package:chuckler/pages/accountpage/account_notifications.dart';
 import 'package:chuckler/state/account_service.dart';
@@ -173,6 +174,25 @@ void main() {
       expect(find.text('Streaker'), findsOneWidget);
       expect(find.text('Coming soon'), findsNWidgets(3));
       expect(find.text('1 of 6 earned'), findsOneWidget);
+
+      // badges in a row line up: same top for icons, names and progress
+      final badges = find.byType(AwardBadge);
+      expect(badges, findsNWidgets(8));
+      final rows = <double, List<Rect>>{};
+      for (final e in badges.evaluate()) {
+        final r = tester.getRect(find.byWidget(e.widget));
+        rows.putIfAbsent(r.top, () => []).add(r);
+      }
+      expect(rows.length, 3); // 3 + 3 + 2
+      for (final row in rows.values) {
+        expect(row.map((r) => r.height).toSet().length, 1);
+      }
+      final columns = rows.values.first.map((r) => r.left).toList();
+      for (final row in rows.values) {
+        for (int i = 0; i < row.length; i++) {
+          expect(row[i].left, columns[i]);
+        }
+      }
 
       await tester.tap(find.text('First Post'));
       await tester.pumpAndSettle();

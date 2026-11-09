@@ -66,6 +66,26 @@ class MatchupAnswer {
 }
 
 /// Two answers to the same prompt, shown as stacked cards
+/// Whom a matchup's prompt is for
+enum MatchupScope { public, friends }
+
+/// The Home tab's filter
+enum MatchupFilter {
+  all('All', 'Everything to vote on'),
+  global('Global', 'Public daily prompts'),
+  friends('Friends', 'Prompts your friends wrote');
+
+  final String label;
+  final String description;
+  const MatchupFilter(this.label, this.description);
+
+  bool shows(Matchup m) => switch (this) {
+        MatchupFilter.all => true,
+        MatchupFilter.global => m.scope == MatchupScope.public,
+        MatchupFilter.friends => m.scope == MatchupScope.friends,
+      };
+}
+
 class Matchup {
   final String id;
   final String promptId;
@@ -73,6 +93,10 @@ class Matchup {
   final String promptBefore;
   final String promptAfter;
   final Segment segment;
+
+  /// whom the prompt is for: public (daily prompts) or friends (a prompt a
+  /// friend wrote, for their friends only). Missing means public.
+  final MatchupScope scope;
 
   /// answers[0] is the top card, answers[1] the bottom card
   final List<MatchupAnswer> answers;
@@ -84,6 +108,7 @@ class Matchup {
     required this.promptBefore,
     required this.promptAfter,
     required this.segment,
+    this.scope = MatchupScope.public,
     required MatchupAnswer top,
     required MatchupAnswer bottom,
   }) : answers = [top, bottom];
@@ -99,6 +124,9 @@ class Matchup {
       promptBefore: data['before'] as String? ?? '',
       promptAfter: data['after'] as String? ?? '',
       segment: parseSegment(data['segment'] as String?),
+      scope: data['scope'] == 'friends'
+          ? MatchupScope.friends
+          : MatchupScope.public,
       top: MatchupAnswer.fromMap(Map<String, dynamic>.from(answers[0])),
       bottom: MatchupAnswer.fromMap(Map<String, dynamic>.from(answers[1])),
     );

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../CustomReusableWidgets/segment_chip.dart';
 import '../../data/matchups.dart';
 import '../createpage/create_stats.dart';
+import '../friends/public_profile_page.dart';
 
 /// One answer in a matchup. Its author shows only after the user votes. Swipe right to pick it as the winner, left to
 /// downvote it. After the user votes it shows the results instead.
@@ -172,8 +173,30 @@ class _VoteCardState extends State<VoteCard>
   }
 
   /// The author's icon and name, at the right of the top row
+  /// Tap to open their profile, where you can send a friend request
   Widget _authorTag(MatchupAuthor author) {
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Semantics(
+        button: true,
+        label: "Open ${author.username}'s profile",
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => PublicProfilePage(
+                  username: author.username, photoUrl: author.photoUrl))),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: _authorRow(author),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _authorRow(MatchupAuthor author) {
     return Row(
+      mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
         Flexible(
@@ -220,8 +243,7 @@ class _VoteCardState extends State<VoteCard>
   }
 
   Widget _results(bool picked) {
-    final downvoted =
-        picked && widget.myVote!.type == VoteType.downvote;
+    final downvoted = picked && widget.myVote!.type == VoteType.downvote;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

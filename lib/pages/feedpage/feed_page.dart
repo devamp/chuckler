@@ -18,6 +18,7 @@ import 'package:chuckler/CustomReusableWidgets/custom_text_widgets.dart';
 import 'no_user_post.dart';
 import 'matchup.dart';
 import 'feedpage_vote.dart';
+import 'matchup_filter.dart';
 
 class FeedPage extends StatefulWidget {
   const FeedPage({super.key});
@@ -33,6 +34,9 @@ class _FeedPageState extends State<FeedPage> {
   //false shows swipe voting, true shows past responses
   bool showPast = false;
 
+  /// The Vote | Past toggle. Off for the first release.
+  static const bool showPastToggle = false;
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -47,25 +51,30 @@ class _FeedPageState extends State<FeedPage> {
             radius: 2,
           ),
         ),
-        child: Column(
-          children: [
-            Expanded(flex: 2, child: Container(
-              alignment: Alignment.bottomLeft,
-              child: Row(
-                children: [
-                  DropdownButtonExample(),
-                  const Spacer(),
-                  voteOrPastToggle(),
-                ],
+        child: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: Row(
+                  children: [
+                    const MatchupFilterButton(),
+                    const Spacer(),
+                    // The Past view is hidden for the first release; the
+                    // toggle and CreateForm stay for later.
+                    if (showPastToggle) voteOrPastToggle(),
+                  ],
+                ),
               ),
-            )),
-            Expanded(
-                flex: 15,
-                /// havePosted ? const CreateForm() :
-                child: !showPast
-                    ? const VotePage()
-                    : havePosted ? const CreateForm() :  const NoUserPost())
-          ],
+              Expanded(
+                  child: !showPast
+                      ? const VotePage()
+                      : havePosted
+                          ? const CreateForm()
+                          : const NoUserPost())
+            ],
+          ),
         ));
   }
 
@@ -200,7 +209,7 @@ class FeedPageContent extends StatelessWidget {
   }
 }
 
-/** DROP DOWN MENU */
+/** DROP DOWN MENU (old, unused: replaced by MatchupFilterButton) */
 class DropdownButtonExample extends StatefulWidget {
   const DropdownButtonExample({super.key});
 
