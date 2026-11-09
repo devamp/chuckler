@@ -209,4 +209,44 @@ void main() {
           isEmpty);
     });
   });
+
+  group('getStreakHistory standings', () {
+    final now = DateTime.utc(2026, 11, 8, 18); // prompt day 2026-11-08
+
+    Future<FakeFirebaseFirestore> withStreaks(
+        Map<String, (String, String)> streaks) async {
+      final db = FakeFirebaseFirestore();
+      for (final e in streaks.entries) {
+        await db.doc('Users/${e.key}/FriendView/profile').set({
+          'streak': {'days': e.value.$1, 'from': e.value.$2}
+        });
+      }
+      return db;
+    }
+
+    test('ranks you and your friends, longest first, ties by name', () async {
+      final db = await withStreaks({
+        'me': ('11', '2026-11-07'), // 2
+        'u-ben': ('111', '2026-11-06'), // 3
+        'u-al': ('11', '2026-11-07'), // 2, ties with me
+        'u-cleo': ('1', '2026-11-05'), // stale: 0
+      });
+      final h = await getStreakHistory(db, 'me', 'me', now: now, friends: {
+        'u-ben': 'ben',
+        'u-al': 'Al',
+        'u-cleo': 'cleo',
+        'u-dev': 'dev', // no profile yet: 0
+      });
+      expect(h.standings.map((f) => '${f.username}:${f.streak}'),
+          ['ben:3', 'Al:2', 'me:2', 'cleo:0', 'dev:0']);
+      expect(h.myPlace, 3);
+      expect(h.answeredDays, hasLength(2));
+    });
+
+    test('no friends means no standings', () async {
+      final db = await withStreaks({'me': ('1', '2026-11-08')});
+      final h = await getStreakHistory(db, 'me', 'me', now: now);
+      expect(h.standings, isEmpty);
+    });
+  });
 }

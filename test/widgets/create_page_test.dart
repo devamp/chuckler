@@ -279,6 +279,39 @@ void main() {
       expect(find.text('0 of 2 answered'), findsOneWidget);
     });
 
+    testWidgets('the streak calendar ranks real friends\' streaks',
+        (tester) async {
+      String daysAgo(int n) => promptDayId(
+          DateTime.now().toUtc().subtract(Duration(days: n)));
+      await pumpCreatePage(tester, live: live, seed: (db) async {
+        for (final (uid, name) in [('u-ben', 'ben'), ('u-cleo', 'cleo')]) {
+          await db.doc('Users/me/Friends/$uid').set({'username': name});
+        }
+        // me: 2 days; ben: 3 days; cleo: last answered 3 days ago, so 0
+        await db.doc('Users/me/FriendView/profile').set({
+          'streak': {'days': '11', 'from': daysAgo(1), 'longest': 2}
+        });
+        await db.doc('Users/u-ben/FriendView/profile').set({
+          'streak': {'days': '111', 'from': daysAgo(2), 'longest': 3}
+        });
+        await db.doc('Users/u-cleo/FriendView/profile').set({
+          'streak': {'days': '1', 'from': daysAgo(3), 'longest': 1}
+        });
+      });
+
+      await tester.tap(find.byTooltip('2 day streak'));
+      await tester.runAsync(
+          () => Future.delayed(const Duration(milliseconds: 50)));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('cleo'), 100,
+          scrollable: find.byType(Scrollable).last);
+
+      expect(find.text('TOP FRIEND STREAKS'), findsOneWidget);
+      expect(find.text("You're #2 of 3 with your friends"), findsOneWidget);
+      expect(find.text('ben'), findsOneWidget);
+      expect(find.text('cleo'), findsOneWidget);
+    });
+
     testWidgets('shows which friends answered each live prompt',
         (tester) async {
       await pumpCreatePage(tester, live: live, seed: (db) async {

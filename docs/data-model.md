@@ -320,7 +320,9 @@ Slice 3 (friends):
 
 - Friends who answered (Create tab): per prompt, `Posts` where `promptDateId`, `promptId` and `uid in` the user's friends, 30 uids per query; one read per answer found. Works because `Posts` are still readable by any signed-in user; once they become friends-only, the rule's friend check must allow this query.
 
-Not live yet: ranking and checkpoints, friend streak standings, friend profiles, friend prompts, Past results, prompt dislikes, undoing a dislike.
+- Friend streak standings (streak calendar): each friend's `FriendView/profile` streak, which friends can now read (the rule checks `Users/{them}/Friends/{me}`). 2 reads per friend each time the calendar opens; not cached yet.
+
+Not live yet: ranking and checkpoints, friend profiles, friend prompts, Past results, prompt dislikes, undoing a dislike.
 
 ## Before the new layout
 

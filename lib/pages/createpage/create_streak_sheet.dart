@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../data/prompt_day.dart';
 import '../../data/prompt_stats.dart';
+import '../../state/friends_service.dart';
 import '../../state/session_service.dart';
 import 'create_stats.dart';
 
@@ -49,11 +50,18 @@ class _StreakSheetState extends State<StreakSheet> {
     super.initState();
     final user =
         Provider.of<SessionService>(context, listen: false).loggedInUser;
+    // friends were loaded by the Create tab
+    final friends = {
+      for (final f
+          in Provider.of<FriendsService>(context, listen: false).friends)
+        f.uid: f.username
+    };
     _history = getStreakHistory(
         Provider.of<FirebaseFirestore>(context, listen: false),
         user?.uid ?? '',
         user?.username ?? '',
-        sample: widget.sample);
+        sample: widget.sample,
+        friends: friends);
   }
 
   bool get _onCurrentMonth =>

@@ -292,10 +292,19 @@ describe("user docs", () => {
         {bio: "hacked"}));
   });
 
-  it("FriendView: only the owner reads, nobody writes", async () => {
+  it("FriendView: the owner and friends read, nobody writes", async () => {
     const p = "Users/alice/FriendView/profile";
     await assertSucceeds(getDoc(doc(as("alice"), p)));
+    // bob isn't a friend yet; a pending request doesn't count
     await assertFails(getDoc(doc(as("bob"), p)));
+    await seed({"Users/alice/FriendRequests/bob": {username: "bob"}});
+    await assertFails(getDoc(doc(as("bob"), p)));
+    await seed({"Users/alice/Friends/bob": {username: "bob"}});
+    await assertSucceeds(getDoc(doc(as("bob"), p)));
+    await assertFails(getDoc(doc(as("carol"), p)));
+    await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(),
+        p)));
+    await assertFails(updateDoc(doc(as("bob"), p), {"stats.answers": 0}));
     await assertFails(updateDoc(doc(as("alice"), p),
         {"stats.answers": 999}));
     await assertFails(setDoc(doc(as("bob"), "Users/bob/FriendView/profile"),

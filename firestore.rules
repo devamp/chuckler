@@ -78,7 +78,10 @@ service cloud.firestore {
       // (registerNewUser) creating the profile empty: no bio text, zero
       // answers, no streak.
       match /FriendView/{doc} {
-        allow read: if isUser(uid);
+        // you, or a friend (someone in your Friends list; friendship is
+        // mutual, so either list would do)
+        allow read: if isUser(uid) || (signedIn() && exists(
+            /databases/$(database)/documents/Users/$(uid)/Friends/$(request.auth.uid)));
         allow create: if isUser(uid) && doc == 'profile'
             && request.resource.data.keys().hasOnly(['bio', 'stats'])
             && request.resource.data.get('bio', '') == ''

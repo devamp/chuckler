@@ -263,20 +263,42 @@ Future<StreakRecord> getStreakRecord(
   return StreakRecord.fromMap(doc.data()?['streak'] as Map<String, dynamic>?);
 }
 
-/// Answered days for the streak calendar, plus friends' streaks. With
-/// [sample], the made-up history that goes with the sample prompts.
+/// Answered days for the streak calendar, plus the current streaks of the
+/// user and their [friends] (uid to username), longest first. Each friend
+/// costs two reads (their FriendView/profile and the rule's friend check).
+/// With [sample], the made-up history that goes with the sample prompts.
+// TODO(cloud): cache the standings for the day instead of reading every
+// friend each time the calendar opens.
 Future<StreakHistory> getStreakHistory(
     FirebaseFirestore firestore, String uid, String username,
-    {bool sample = false}) async {
+    {bool sample = false,
+    Map<String, String> friends = const {},
+    DateTime? now}) async {
   if (sample) {
     return sampleStreakHistory(DateTime.now().toUtc(), username);
   }
-  // TODO(cloud): standings: streak.current from each friend's
-  // FriendView/profile, by uid (needs friends stored by uid, TODO.md
-  // Prerequisites). Cache for the day: about two reads per friend (doc +
-  // friend check). Until then the standings section is hidden.
+  final today = promptDayId((now ?? DateTime.now()).toUtc());
   final record = await getStreakRecord(firestore, uid);
-  return StreakHistory(answeredDays: record.answeredDays);
+  if (friends.isEmpty) {
+    return StreakHistory(answeredDays: record.answeredDays);
+  }
+  final friendStreaks = await Future.wait(friends.entries.map((f) async {
+    try {
+      final r = await getStreakRecord(firestore, f.key);
+      return FriendStreak(f.value, r.currentAsOf(today));
+    } catch (e) {
+      return null; // unreadable (e.g. no longer friends): leave them out
+    }
+  }));
+  final standings = [
+    FriendStreak(username, record.currentAsOf(today), isMe: true),
+    ...friendStreaks.whereType<FriendStreak>(),
+  ]..sort((a, b) {
+      final byStreak = b.streak.compareTo(a.streak);
+      if (byStreak != 0) return byStreak;
+      return a.username.toLowerCase().compareTo(b.username.toLowerCase());
+    });
+  return StreakHistory(answeredDays: record.answeredDays, standings: standings);
 }
 
 /// Days in a row the user has answered at least one prompt
