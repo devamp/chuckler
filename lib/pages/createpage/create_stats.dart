@@ -88,7 +88,7 @@ class PromptStatsStrip extends StatelessWidget {
                   Flexible(
                     child: Text(
                       friends.isEmpty
-                          ? 'No friends yet'
+                          ? 'No friends answered'
                           : '${friends.length} '
                               '${friends.length == 1 ? 'friend' : 'friends'}',
                       overflow: TextOverflow.ellipsis,

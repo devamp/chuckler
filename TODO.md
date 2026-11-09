@@ -29,7 +29,7 @@ Later, if the app grows, Local and Global prompt slots could be sold to companie
 
 **Still to do:**
 - Your answer's matchups, wins, dislikes, rank and wins per hour stay at zero until voting goes live (slice 2). Prompt dislikes aren't in the UI yet.
-- Friends who answered and the friend streak standings need friends lists by uid (Prerequisites); until then they're empty and the standings are hidden.
+- Friends who answered is live. The friend streak standings still need friends to be able to read each other's `FriendView/profile`; until then they're hidden.
 - Tapping a friend in the answered list or the streak standings should open their profile. The time-left label counts down to the 05:00 UTC rollover until prompts have lifetimes.
 - **Caption prompts (later slice):** prompts with `kind: "caption"` show an image to caption. Needs `imageUrl`/`imageAlt` on the prompt (copied into matchups), a Storage rule letting signed-in users read prompt images, a caption card on the Create tab and the image on the vote screen, and a check that Cloud Storage works on the project's current plan.
 - **Create a friend prompt:** the + in the Create tab header opens a prompt builder (text before and after the blank, with a live preview) that sends the prompt to your friends. Limit 1 a day. Layout: `FriendPrompts` in `docs/data-model.md`. *Built on the phone only:* the prompt is added to your own pages, tagged "Not shared yet", and answers to it stay local until `createFriendPrompt` in `lib/data/friend_prompts.dart` writes to Firestore.
@@ -97,7 +97,7 @@ All of this runs **server-side** (scheduled Cloud Functions at the checkpoints) 
 
 ## Prerequisites
 
-- **Friends lists by uid.** *Done in the emulator (slice 3):* `Friends` and `FriendRequests` by uid, requests by username or email, and a Friends screen on the Account tab. Still to do: friends who answered, friend streak standings, opening a friend's profile, and moving the Past feed popup off the old username lists on `Users`.
+- **Friends lists by uid.** *Done in the emulator (slice 3):* `Friends` and `FriendRequests` by uid, requests by username or email, and a Friends screen on the Account tab. *Friends who answered* is live on the Create tab (a `Posts` query per prompt, `uid in` the user's friends, 30 at a time). Still to do: friend streak standings, opening a friend's profile, and moving the Past feed popup off the old username lists on `Users`.
 - **One vote per user per matchup**, e.g. `Votes/{matchupId}_{uid}`, with totals derived from those. Firestore rules can allow create but not update, which enforces "votes are final" on the server.
 - **Blaze plan before launch.** Matchups, ranking, checkpoints and AI prompt generation all need Cloud Functions. At this scale usage should stay within the free quotas; set a budget alert.
 - **Moderation for user-generated content.** Friend-created prompts and answers need report, block and filtering to satisfy App Store Review guideline 1.2.

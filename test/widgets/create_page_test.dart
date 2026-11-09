@@ -7,6 +7,7 @@ import 'package:chuckler/database/models.dart';
 import 'package:chuckler/pages/createpage/create_page.dart';
 import 'package:chuckler/pages/createpage/create_prompt_card.dart';
 import 'package:chuckler/state/create_service.dart';
+import 'package:chuckler/state/friends_service.dart';
 import 'package:chuckler/state/prompt_service.dart';
 import 'package:chuckler/state/session_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -30,12 +31,14 @@ void main() {
   Future<void> pumpCreatePage(WidgetTester tester,
       {List<DbPrompt>? live,
       bool loggedIn = true,
-      Size size = const Size(393, 852)}) async {
+      Size size = const Size(393, 852),
+      Future<void> Function(FakeFirebaseFirestore)? seed}) async {
     tester.view.physicalSize = size * 3;
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
 
     firestore = FakeFirebaseFirestore();
+    if (seed != null) await tester.runAsync(() => seed(firestore));
     create = CreateService();
     promptService = PromptService();
     for (final p in live ?? [awaitingPrompt()]) {
@@ -49,10 +52,12 @@ void main() {
         ChangeNotifierProvider.value(value: session),
         ChangeNotifierProvider.value(value: promptService),
         ChangeNotifierProvider.value(value: create),
+        ChangeNotifierProvider.value(value: FriendsService()),
         Provider<FirebaseFirestore>.value(value: firestore),
       ],
       child: const MaterialApp(home: Scaffold(body: CreatePage())),
     ));
+    await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 50)));
     await tester.pumpAndSettle();
   }
 
@@ -206,7 +211,7 @@ void main() {
       for (var i = 0; i < 3; i++) {
         await swipeLeft(tester);
       }
-      await tester.tap(find.text('No friends yet'));
+      await tester.tap(find.text('No friends answered'));
       await tester.pumpAndSettle();
       expect(find.textContaining('ANSWERED'), findsNothing);
     });
@@ -272,6 +277,41 @@ void main() {
       expect(find.text('Sample'), findsNothing);
       expect(find.text('57'), findsOneWidget);
       expect(find.text('0 of 2 answered'), findsOneWidget);
+    });
+
+    testWidgets('shows which friends answered each live prompt',
+        (tester) async {
+      await pumpCreatePage(tester, live: live, seed: (db) async {
+        for (final (uid, name) in [('u-ben', 'ben'), ('u-cleo', 'cleo')]) {
+          await db.doc('Users/me/Friends/$uid').set({'username': name});
+        }
+        // ben and a stranger answered p1; cleo answered nothing
+        for (final (id, uid, name) in [
+          ('a1', 'u-ben', 'ben'),
+          ('a2', 'u-zed', 'zed'),
+        ]) {
+          await db.doc('Posts/$id').set({
+            'uid': uid,
+            'username': name,
+            'promptId': 'p1',
+            'promptDateId': '2026-11-08',
+          });
+        }
+      });
+
+      expect(find.text('1 friend'), findsOneWidget);
+      await tester.tap(find.text('1 friend'));
+      await tester.pumpAndSettle();
+      expect(find.text('1 FRIEND ANSWERED'), findsOneWidget);
+      expect(
+          find.descendant(
+              of: find.byType(BottomSheet), matching: find.text('ben')),
+          findsOneWidget);
+      Navigator.of(tester.element(find.byType(BottomSheet))).pop();
+      await tester.pumpAndSettle();
+
+      await swipeLeft(tester);
+      expect(find.text('No friends answered'), findsOneWidget);
     });
 
     testWidgets('posting writes a Posts doc and records it for the prompt',
@@ -453,7 +493,7 @@ void main() {
       expect(find.text('Not shared yet'), findsOneWidget);
       expect(find.text('Friends'), findsOneWidget);
       expect(find.text('1 of 4 answered'), findsOneWidget);
-      expect(find.text('No friends yet'), findsOneWidget);
+      expect(find.text('No friends answered'), findsOneWidget);
 
       // answering your own prompt stays local too
       await tester.enterText(find.byType(TextField), 'a vacuum cleaner');

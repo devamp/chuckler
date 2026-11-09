@@ -98,9 +98,35 @@ DocumentReference<Map<String, dynamic>> promptRef(
         .collection('Prompts')
         .doc(prompt.promptId);
 
-/// Stats for one prompt. myPost is the user's answer, or null.
+/// Usernames of the friends who answered a prompt. [friends] maps each
+/// friend's uid to their username. One query per 30 friends (Firestore's
+/// whereIn limit); each answer found is one read.
+Future<List<String>> getFriendsWhoAnswered(FirebaseFirestore firestore,
+    DbPrompt prompt, Map<String, String> friends) async {
+  if (friends.isEmpty) return const [];
+  final uids = friends.keys.toList();
+  final names = <String>[];
+  for (var i = 0; i < uids.length; i += 30) {
+    final chunk = uids.sublist(i, i + 30 > uids.length ? uids.length : i + 30);
+    final snap = await firestore
+        .collection('Posts')
+        .where('promptDateId', isEqualTo: prompt.promptDateId)
+        .where('promptId', isEqualTo: prompt.promptId)
+        .where('uid', whereIn: chunk)
+        .get();
+    for (final d in snap.docs) {
+      final uid = d.data()['uid'] as String?;
+      names.add(friends[uid] ?? d.data()['username'] as String? ?? '');
+    }
+  }
+  return names..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+}
+
+/// Stats for one prompt. myPost is the user's answer, or null. [friends]
+/// (uid to username) finds the friends who answered.
 Future<PromptStats> getPromptStats(FirebaseFirestore firestore, String uid,
-    DbPrompt prompt, DbPost? myPost) async {
+    DbPrompt prompt, DbPost? myPost,
+    {Map<String, String> friends = const {}}) async {
   if (isLocalFriendPrompt(prompt)) {
     // only on this phone, so nobody else has answered or liked it
     return PromptStats(
@@ -111,10 +137,6 @@ Future<PromptStats> getPromptStats(FirebaseFirestore firestore, String uid,
   if (isSamplePrompt(prompt)) {
     return samplePromptStats(prompt, myPost);
   }
-  // TODO(cloud): friends who answered: Posts where promptDateId and promptId
-  // match and uid is in the user's friends, chunked by 30 for whereIn. Needs
-  // friends stored by uid first (TODO.md, Prerequisites), and a check in the
-  // emulator that the rules allow the query (docs/data-model.md, Rules).
   final data = (await promptRef(firestore, prompt).get()).data() ?? {};
   final counts = data['counts'] as Map<String, dynamic>? ?? {};
   final likedBy = List<String>.from(data['likedBy'] ?? const []);
@@ -122,6 +144,7 @@ Future<PromptStats> getPromptStats(FirebaseFirestore firestore, String uid,
     answers: (counts['answers'] as num?)?.toInt() ?? prompt.responses,
     likes: (counts['likes'] as num?)?.toInt() ?? 0,
     likedByMe: likedBy.contains(uid),
+    friendsAnswered: await getFriendsWhoAnswered(firestore, prompt, friends),
     mine: myPost == null ? null : await getAnswerStats(firestore, myPost),
   );
 }

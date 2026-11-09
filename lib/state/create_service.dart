@@ -19,6 +19,9 @@ class CreateService with ChangeNotifier {
   final Map<String, String> _drafts = {};
   final Map<String, PromptStats> _stats = {};
 
+  /// the user's friends, uid to username, for "friends who answered"
+  Map<String, String> _friends = const {};
+
   /// likes the user changed on this phone, overriding PromptStats.likedByMe
   final Map<String, bool> _liked = {};
   Map<String, DbPost>? _samplePosts;
@@ -158,6 +161,12 @@ class CreateService with ChangeNotifier {
     notifyListeners();
   }
 
+  /// Sets whose answers count as friends' (uid to username). Takes effect at
+  /// the next loadStats.
+  void setFriends(Map<String, String> friends) {
+    _friends = Map.unmodifiable(friends);
+  }
+
   /// Fetches stats for every answerable prompt, or only for prompt [only].
   /// After the user posts to [only], pass [justAnswered]: the server counts
   /// the new answer a moment later, so until it shows up the count is the
@@ -172,8 +181,9 @@ class CreateService with ChangeNotifier {
       final key = _key(prompts[i]);
       final before = _stats[key]?.answers;
       try {
-        var stats =
-            await getPromptStats(firestore, uid, prompts[i], postFor(i));
+        var stats = await getPromptStats(
+            firestore, uid, prompts[i], postFor(i),
+            friends: _friends);
         if (justAnswered && before != null && stats.answers <= before) {
           stats = stats.withAnswers(before + 1);
         }
@@ -202,6 +212,7 @@ class CreateService with ChangeNotifier {
     _streak = 0;
     _drafts.clear();
     _stats.clear();
+    _friends = const {};
     _liked.clear();
     _samplePosts = null;
     _created.clear();

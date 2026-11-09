@@ -13,6 +13,7 @@ import '../../data/prompts.dart';
 import '../../data/users.dart';
 import '../../database/isarDB.dart';
 import '../../database/models.dart';
+import '../../state/friends_service.dart';
 import '../../state/create_service.dart';
 import '../../state/prompt_service.dart';
 import '../../state/session_service.dart';
@@ -83,9 +84,25 @@ class _CreatePageState extends State<CreatePage> {
         includeSamples: includeSamples,
         uid: user?.uid ?? '',
         username: user?.username ?? '');
-    createService.loadStats(
-        Provider.of<FirebaseFirestore>(context, listen: false),
-        user?.uid ?? '');
+    _loadStatsWithFriends(createService, user);
+  }
+
+  /// Loads the user's friends first (once per session), so the stats can
+  /// show which friends answered each prompt
+  Future<void> _loadStatsWithFriends(
+      CreateService createService, DbUser? user) async {
+    FirebaseFirestore firestore =
+        Provider.of<FirebaseFirestore>(context, listen: false);
+    FriendsService friends =
+        Provider.of<FriendsService>(context, listen: false);
+    String uid = user?.uid ?? '';
+    if (!friends.loaded && uid.isNotEmpty) {
+      await friends.load(firestore, uid,
+          Provider.of<SessionService>(context, listen: false).email);
+    }
+    createService.setFriends(
+        {for (final f in friends.friends) f.uid: f.username});
+    await createService.loadStats(firestore, uid);
   }
 
   void onPageChanged(int i) {

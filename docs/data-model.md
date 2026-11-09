@@ -318,7 +318,9 @@ Slice 3 (friends):
 - Requests by email: `EmailRequests/{emailHash}/From/{me}`. `emailHash` is SHA-256 hex of the trimmed, lowercased address; the rules compute the same from the signed-in user's token (`hashing.sha256`), so only that email's owner reads them. The sender learns nothing about whether the email has an account, and the database never stores addresses.
 - Uids never appear in the UI: people search by username or email.
 
-Not live yet: ranking and checkpoints, friends who answered and friend streak standings, friend profiles, friend prompts, Past results, prompt dislikes, undoing a dislike.
+- Friends who answered (Create tab): per prompt, `Posts` where `promptDateId`, `promptId` and `uid in` the user's friends, 30 uids per query; one read per answer found. Works because `Posts` are still readable by any signed-in user; once they become friends-only, the rule's friend check must allow this query.
+
+Not live yet: ranking and checkpoints, friend streak standings, friend profiles, friend prompts, Past results, prompt dislikes, undoing a dislike.
 
 ## Before the new layout
 

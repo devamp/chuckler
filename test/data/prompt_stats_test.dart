@@ -177,4 +177,36 @@ void main() {
       expect(record.answeredDays, hasLength(3));
     });
   });
+
+  group('getFriendsWhoAnswered', () {
+    final prompt = DbPrompt('My ', '', '2026-11-08', 'p1', '2026-11-08', null);
+
+    test('finds friends\' answers past the 30-per-query limit', () async {
+      final firestore = FakeFirebaseFirestore();
+      final friends = <String, String>{};
+      for (var i = 0; i < 40; i++) {
+        friends['u$i'] = 'friend$i';
+      }
+      // friends 5 and 35 answered (different whereIn chunks), plus a stranger
+      for (final uid in ['u5', 'u35', 'stranger']) {
+        await firestore.collection('Posts').add({
+          'uid': uid,
+          'promptId': 'p1',
+          'promptDateId': '2026-11-08',
+        });
+      }
+      // an answer to another prompt doesn't count
+      await firestore.collection('Posts').add(
+          {'uid': 'u6', 'promptId': 'p2', 'promptDateId': '2026-11-08'});
+
+      expect(await getFriendsWhoAnswered(firestore, prompt, friends),
+          ['friend35', 'friend5']);
+    });
+
+    test('no friends means no query', () async {
+      expect(
+          await getFriendsWhoAnswered(FakeFirebaseFirestore(), prompt, {}),
+          isEmpty);
+    });
+  });
 }
