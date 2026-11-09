@@ -85,5 +85,7 @@ Future<DbPrompt> createFriendPrompt(FirebaseFirestore firestore, DbUser user,
   //   Users/{uid}/Private/account, checked with getAfter).
   final (b, a) = normalizePromptParts(before, after);
   return DbPrompt(b, a, localFriendPromptDayId,
-      'friend-${DateTime.now().microsecondsSinceEpoch}', null, 'friends');
+      'friend-${DateTime.now().microsecondsSinceEpoch}', null, null)
+    ..location = 'friends'
+    ..kind = 'fill';
 }

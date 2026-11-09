@@ -26,6 +26,8 @@ Document limits worth remembering: 1 MiB per doc, 20,000 fields, about one susta
 | Comments in voting | Only after you vote. You see the thread of the answer you acted on; tap the other card to see its thread. Only voters can comment. |
 | Views | Not counted. Ranking uses votes. |
 | Streak history | A string of `1`/`0` per day (see Users). |
+| Prompt days | Roll over at **05:00 UTC** for everyone (midnight Eastern standard time, 10pm Mountain), so friends share the same "today". `lib/data/prompt_day.dart` and `functions/` use the same rule. |
+| Prompt format | `kind: "fill"` (fill in the blank). Caption prompts (`kind: "caption"`, with an image) come later. The segment is in `location`; the old data's `type` field held the format. |
 | Private account data | Email and password stay in Firebase Auth, never copied to Firestore. |
 | Vote cards | **Anonymous**: matchups don't name their authors, so strangers can't trace answers to people. |
 | Past feed | Once a prompt ends, its answers show **with usernames**, strangers' included. Voting stays anonymous while the prompt is open. |
@@ -47,7 +49,7 @@ Users/{uid}                           ANYONE: { username, photoUrl }
   Notifications/{id}                  YOU
 
 PromptDays/{yyyy-MM-dd}               { date, opensAt, endsAt }
-  Prompts/{promptId}                  before, after, segment, creator, counts { answers, likes, dislikes },
+  Prompts/{promptId}                  before, after, kind, location, creator, counts { answers, likes, dislikes },
                                       likedBy [uids]
     Results/{n}                       ANY SIGNED-IN USER, after the prompt ends: answers with usernames
 
@@ -160,7 +162,7 @@ answers: [ { postId, uid, username, photoUrl, answer, wins, dislikes, winRate, r
 
 ```
 uid, username, photoUrl          copies; updated on rename
-promptDateId, promptId, before, after, answer, createdAt
+promptDateId, promptId, before, after, answer, date          (named date, not createdAt, so getPosts keeps working)
 status: "active" | "retired"
 matched
 counts: { matchups, votes, wins, dislikes, likes, comments }
@@ -289,9 +291,20 @@ Assumes 3 prompts, 30 friends, 1 answer posted, 1 prompt liked, 20 votes.
 
 Each vote is the `Votes` doc plus the function's matchup count; a downvote adds 2 writes (the `Dislikes` doc and the count). Writes run out before reads on the free tier: roughly 360 sessions a day. On Blaze a session costs about $0.0001.
 
-## Today
+## Live in the emulator
 
-What the app and the deployed project actually use now:
+Slice 1 (the Create tab) runs on this layout in the local emulator:
+- `PromptDays/{dayId}/Prompts`: read directly by day id (N reads, no query), with `kind`, `location`, `creator`, `counts`, `likedBy`. Liking is live.
+- `Posts` (with `before`, `after`, `status`, `counts`) and `Users/{uid}/History/{yyyy-MM}`, written in one batch. Login reads today's answers from one History doc.
+- `Users/{uid}/FriendView/profile` (stats, streak string, kept by the `onPostCreated` function) and `Private/account` (age).
+- `Usernames`, claimed in a transaction at signup.
+- `Users/{uid}` still carries the legacy fields (friend lists by username, post count) until the friends slice.
+
+Not live yet: matchups and votes, comments, friends by uid, friend prompts, Past results.
+
+## Before the new layout
+
+What production and the old app used:
 
 - `Users/{uid}`: username, age, profileImage, friend and post counts. Readable by any signed-in user, so age is public. Friends are stored by username.
 - `PromptDays/{randomId}` with `Prompts/{id}`: found with a date-range query.

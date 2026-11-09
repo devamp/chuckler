@@ -1,5 +1,6 @@
 import '../database/models.dart';
 import 'friend_prompts.dart';
+import 'prompt_day.dart';
 import 'prompt_stats.dart';
 
 // Example prompts and stats for building the Create tab before the stats
@@ -22,8 +23,10 @@ const String _seededPostPrefix = 'sample-seeded-';
 List<DbPrompt> samplePrompts() {
   DbPrompt prompt(String id, String before, String after, String type,
       int responses) {
-    return DbPrompt(before, after, samplePromptDayId, id, null, type)
-      ..responses = responses;
+    return DbPrompt(before, after, samplePromptDayId, id, null, null)
+      ..responses = responses
+      ..location = type
+      ..kind = 'fill';
   }
 
   return [
@@ -97,7 +100,7 @@ const List<String> _sampleFriends = [
 /// A sampleStreak-day streak ending today, gaps before it, and friends
 /// around the user in the standings
 StreakHistory sampleStreakHistory(DateTime nowUtc, String username) {
-  final today = DateTime.utc(nowUtc.year, nowUtc.month, nowUtc.day);
+  final today = promptDayDate(promptDayId(nowUtc));
   const daysAgo = [0, 1, 2, 3, 6, 7, 9, 12, 13, 14, 15, 18, 20, 21, 27, 33, 34];
   return StreakHistory(
     answeredDays: {

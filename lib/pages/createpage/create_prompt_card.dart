@@ -1,6 +1,7 @@
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
 import '../../data/friend_prompts.dart';
+import '../../data/prompt_day.dart';
 import '../../data/prompt_stats.dart';
 import '../../data/prompts.dart';
 import '../../data/sample_prompts.dart';
@@ -157,11 +158,10 @@ class PromptCard extends StatelessWidget {
 
 /// Time until the prompt closes, e.g. "5h 12m left"
 String timeLeftLabel(DateTime nowUtc) {
-  // TODO(cloud): prompts close at the next UTC midnight for now. Once
-  // prompts have lifetimes (TODO.md section 4), read the end time from
+  // TODO(cloud): prompts close when their day rolls over. Once prompts have
+  // lifetimes (TODO.md section 4), read the end time from
   // PromptDays/{promptDateId}/Prompts/{promptId}.endsAt instead.
-  final end = DateTime.utc(nowUtc.year, nowUtc.month, nowUtc.day)
-      .add(const Duration(days: 1));
+  final end = promptDayEnd(promptDayId(nowUtc));
   final left = end.difference(nowUtc);
   if (left.inHours >= 1) {
     return '${left.inHours}h ${left.inMinutes % 60}m left';

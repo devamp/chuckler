@@ -31,6 +31,10 @@ class CreateService with ChangeNotifier {
   /// UTC day of the last friend prompt made, for the one-a-day limit
   DateTime? _lastCreatedDay;
 
+  /// sample prompts are showing, so the streak is sample data too
+  bool _usingSamples = false;
+  bool get usingSamples => _usingSamples;
+
   List<DbPrompt> get prompts => _prompts;
   int get page => _page;
   int get length => _prompts.length;
@@ -72,10 +76,13 @@ class CreateService with ChangeNotifier {
   /// Who made prompt i. Live daily prompts come from the Chuckler account.
   PromptCreator creatorFor(int i) {
     final p = _prompts[i];
-    // TODO(cloud): read the prompt's creator field once prompts carry one
-    // (docs/data-model.md, Prompts).
-    return _creators[_key(p)] ??
-        (isSamplePrompt(p) ? sampleCreator(p) : chuckler);
+    if (_creators[_key(p)] != null) return _creators[_key(p)]!;
+    if (isSamplePrompt(p)) return sampleCreator(p);
+    if (p.creatorUid == null || p.creatorUid == chucklerUid) return chuckler;
+    return PromptCreator(
+        uid: p.creatorUid!,
+        username: p.creatorUsername ?? '',
+        photoUrl: p.creatorPhotoUrl ?? '');
   }
 
   /// One new friend prompt a day
@@ -99,6 +106,7 @@ class CreateService with ChangeNotifier {
   /// includeSamples is set. livePosts[i] is the user's answer to live[i].
   void setPrompts(List<DbPrompt> live, List<DbPost?> livePosts,
       {bool includeSamples = false, String uid = '', String username = ''}) {
+    _usingSamples = includeSamples;
     _prompts = [...live];
     _posts = [
       for (int i = 0; i < live.length; i++)
@@ -156,7 +164,9 @@ class CreateService with ChangeNotifier {
       _stats[_key(prompts[i])] = stats;
     }
     if (only == null) {
-      _streak = await getAnswerStreak(firestore, uid);
+      _streak = _usingSamples
+          ? sampleStreak
+          : await getAnswerStreak(firestore, uid);
     }
     notifyListeners();
   }
@@ -174,6 +184,7 @@ class CreateService with ChangeNotifier {
     _createdPosts.clear();
     _creators.clear();
     _lastCreatedDay = null;
+    _usingSamples = false;
     notifyListeners();
   }
 }

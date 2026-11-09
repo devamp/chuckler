@@ -23,7 +23,8 @@ void main() {
   group('createPost', () {
     test('writes a post and returns it marked as mine', () async {
       final user = DbUser('u1', 'alice', 0, 0, '');
-      final prompt = DbPrompt('before', 'after', 'day1', 'p1', '2026-11-01', 't');
+      final prompt =
+          DbPrompt('before ', '', '2026-11-08', 'p1', '2026-11-08', null);
 
       final post = await createPost(firestore, user, prompt, 'my answer');
 
@@ -33,7 +34,7 @@ void main() {
       expect(post.uid, 'u1');
       expect([post.likes, post.dislikes, post.wins], [0, 0, 0]);
       expect(post.promptId, 'p1');
-      expect(post.promptDateId, 'day1');
+      expect(post.promptDateId, '2026-11-08');
       expect(post.mine, isTrue);
 
       final doc = await firestore.collection('Posts').doc(post.postId).get();
@@ -42,15 +43,62 @@ void main() {
       expect(data['uid'], 'u1');
       expect(data['username'], 'alice');
       expect(data['promptId'], 'p1');
-      expect(data['promptDateId'], 'day1');
+      expect(data['promptDateId'], '2026-11-08');
       expect([data['likes'], data['dislikes'], data['wins']], [0, 0, 0]);
       expect(data['random'], isA<int>());
       expect(data['date'], isA<Timestamp>());
+      expect(data['before'], 'before ');
+      expect(data['status'], 'active');
+      expect(data['counts'],
+          {'matchups': 0, 'votes': 0, 'wins': 0, 'dislikes': 0});
+
+      // the same batch adds it to the user's History for that month
+      final history = await firestore
+          .collection('Users')
+          .doc('u1')
+          .collection('History')
+          .doc('2026-11')
+          .get();
+      final entry = history.data()!['answers']['2026-11-08_p1'];
+      expect(entry['postId'], post.postId);
+      expect(entry['answer'], 'my answer');
+      expect(entry['before'], 'before ');
     });
 
-    // TODO(bug): if the write fails, createPost still returns a DbPost with an
-    // empty postId instead of reporting the failure. Not reproducible with the
-    // fake, which never fails writes.
+    test('a second answer in the month is added to the same History doc',
+        () async {
+      final user = DbUser('u1', 'alice', 0, 0, '');
+      await createPost(firestore, user,
+          DbPrompt('a', '', '2026-11-08', 'p1', '2026-11-08', null), 'one');
+      await createPost(firestore, user,
+          DbPrompt('b', '', '2026-11-09', 'p2', '2026-11-09', null), 'two');
+
+      final history = await firestore
+          .collection('Users')
+          .doc('u1')
+          .collection('History')
+          .doc('2026-11')
+          .get();
+      expect((history.data()!['answers'] as Map).keys,
+          containsAll(['2026-11-08_p1', '2026-11-09_p2']));
+    });
+
+    test('getMyAnswersForDay reads one day\'s answers from History',
+        () async {
+      final user = DbUser('u1', 'alice', 0, 0, '');
+      final p1 = await createPost(firestore, user,
+          DbPrompt('a', '', '2026-11-08', 'p1', '2026-11-08', null), 'one');
+      await createPost(firestore, user,
+          DbPrompt('b', '', '2026-11-07', 'p2', '2026-11-07', null), 'old');
+
+      final mine = await getMyAnswersForDay(firestore, user, '2026-11-08');
+
+      expect(mine.keys, ['p1']);
+      expect(mine['p1']!.postId, p1.postId);
+      expect(mine['p1']!.answer, 'one');
+      expect(mine['p1']!.mine, isTrue);
+      expect(await getMyAnswersForDay(firestore, user, '2026-12-01'), isEmpty);
+    });
   });
 
   group('getPosts', () {

@@ -1,6 +1,7 @@
 // Widget tests for the Create tab: swiping between prompts, answering, and
 // the stats. With no live prompt, debug builds (and tests) add sample prompts.
 
+import 'package:chuckler/data/prompt_day.dart';
 import 'package:chuckler/data/prompts.dart';
 import 'package:chuckler/database/models.dart';
 import 'package:chuckler/pages/createpage/create_page.dart';
@@ -16,8 +17,9 @@ import 'package:provider/provider.dart';
 import 'fonts.dart';
 
 DbPrompt livePrompt(String id, String before, int responses) {
-  return DbPrompt(before, '', 'day-1', id, '2026-11-02', 'global')
-    ..responses = responses;
+  return DbPrompt(before, '', '2026-11-08', id, '2026-11-08', null)
+    ..responses = responses
+    ..location = 'global';
 }
 
 void main() {
@@ -217,7 +219,7 @@ void main() {
 
       expect(find.text('4 DAY STREAK'), findsOneWidget);
       // today is answered in the sample history; four days ago was missed
-      final now = DateTime.now().toUtc();
+      final now = promptDayDate(promptDayId(DateTime.now().toUtc()));
       expect(find.bySemanticsLabel(RegExp(' ${now.day}, answered\$')),
           findsOneWidget);
       final gap = now.subtract(const Duration(days: 4));
@@ -287,10 +289,18 @@ void main() {
       expect(posts, hasLength(1));
       expect(posts.first['answer'], 'Not again');
       expect(posts.first['promptId'], 'p1');
-      expect(posts.first['promptDateId'], 'day-1');
+      expect(posts.first['promptDateId'], '2026-11-08');
       expect(promptService.userPostsForPrompts[0]?.answer, 'Not again');
       final me = await firestore.collection('Users').doc('me').get();
       expect(me['posts'], 3);
+      final history = await firestore
+          .collection('Users')
+          .doc('me')
+          .collection('History')
+          .doc('2026-11')
+          .get();
+      expect(history.data()!['answers']['2026-11-08_p1']['answer'],
+          'Not again');
       expect(find.text('YOUR ANSWER'), findsOneWidget);
       expect(find.text('1 of 2 answered'), findsOneWidget);
     });

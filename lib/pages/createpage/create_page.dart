@@ -311,7 +311,8 @@ class _CreatePageState extends State<CreatePage> {
                   ? StreakChip(
                       days: createService.streak,
                       onTap: () =>
-                          showStreakSheet(context, createService.streak))
+                          showStreakSheet(context, createService.streak,
+                              sample: createService.usingSamples))
                   : const SizedBox(),
             ),
           ),

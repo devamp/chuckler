@@ -114,4 +114,38 @@ void main() {
       expect(doc.data()!['profileImage'], 'https://example.com/b.png');
     });
   });
+
+  group('registerNewUser', () {
+    test('claims the username and writes the new user\'s docs', () async {
+      await registerNewUser(firestore, 'u9', 'Caden_D', 21);
+
+      expect((await firestore.collection('Usernames').doc('caden_d').get())
+          .data(), {'uid': 'u9'});
+      final user = firestore.collection('Users').doc('u9');
+      expect((await user.get()).data()!['username'], 'Caden_D');
+      expect((await user.get()).data()!.containsKey('age'), isFalse);
+      expect((await user.collection('Private').doc('account').get()).data(),
+          {'age': 21});
+      expect(
+          (await user.collection('FriendView').doc('profile').get()).data(),
+          {'bio': '', 'stats': {'answers': 0}});
+    });
+
+    test('refuses a username someone has, ignoring case', () async {
+      await registerNewUser(firestore, 'u1', 'caden', 21);
+
+      expect(registerNewUser(firestore, 'u2', 'CADEN', 30),
+          throwsA(isA<UsernameTakenException>()));
+      await Future<void>.delayed(Duration.zero);
+      expect((await firestore.collection('Users').doc('u2').get()).exists,
+          isFalse);
+    });
+
+    test('validUsername allows letters, numbers, dots and underscores', () {
+      expect(validUsername.hasMatch('caden.d_99'), isTrue);
+      expect(validUsername.hasMatch('ab'), isFalse);
+      expect(validUsername.hasMatch('has space'), isFalse);
+      expect(validUsername.hasMatch('a/b'), isFalse);
+    });
+  });
 }

@@ -1,5 +1,6 @@
 import 'package:isar_community/isar.dart';
 import 'package:path_provider/path_provider.dart';
+import '../data/prompt_day.dart';
 import 'models.dart';
 
 class IsarService {
@@ -80,11 +81,9 @@ class IsarService {
   }
 
   Future<List<DbPrompt>> getDailyPromptsFromDB() async {
-    DateTime now = DateTime.now().toUtc();
-    final utcMidnight = DateTime.utc(now.year, now.month, now.day);
     final prompts = await db.dbPrompts
         .filter()
-        .dateEqualTo(utcMidnight.toIso8601String().substring(0, 10))
+        .dateEqualTo(promptDayId(DateTime.now().toUtc()))
         .findAll();
     return prompts;
   }

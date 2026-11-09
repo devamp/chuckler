@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../data/users.dart';
 class SignupPage extends StatefulWidget {
   @override
   SignupPage({super.key});
@@ -27,39 +28,6 @@ class _SignupState extends State<SignupPage> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   FirebaseFirestore firestore = FirebaseFirestore.instance;
 
-  /// Check If Document Exists
-   /**THis is not set up Right TODO SET UP PAYED ACCOUNT FOR THIS
-  Future<bool> checkIfDocExists(String docId) async {
-    try {
-      final HttpsCallable callable =
-          FirebaseFunctions.instance.httpsCallable('checkUsername');
-      final results = await callable(username); // Pass username directly
-      // Check for errors (optional)
-      if (results.data['error'] != null) {
-        throw Exception('Error checking username');
-      }
-      return results.data['exists'] as bool;
-      return true;
-    } catch (e) {
-      return true;
-    }
-  }*/
-
-  ///Register the user with username as doc id
-  Future<void> registerUser(String uid) async {
-    try {
-      await firestore.collection('Users').doc(uid).set({
-        'username': username,
-        'age': age,
-        'friends': 0,
-        'pendingFriends': 0,
-        'posts': 0,
-        'profileImage': ""
-      });
-    } catch (e) {
-      print('Error: $e');
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -195,20 +163,24 @@ class _SignupState extends State<SignupPage> {
                             email.isNotEmpty &&
                             password.isNotEmpty) {
                           try {
-                            bool isUserName = false;
-                            //TODO add pay account and use this checkIfDocExists(username);
-                            if (isUserName) {
-                              throw (Error.safeToString(
-                                  "Username already exists"));
+                            if (!validUsername.hasMatch(username)) {
+                              throw Exception(
+                                  '] Usernames are 3 to 20 letters, numbers, dots or underscores.');
                             }
                             UserCredential result =
                                 await _auth.createUserWithEmailAndPassword(
                               email: email,
                               password: password,
                             );
-                            //Register user with unique uid from authentication this can be done asynchronously
-                            registerUser(
-                                result.user!.uid); // add user info to db
+                            try {
+                              // claims the username; fails if it's taken
+                              await registerNewUser(firestore,
+                                  result.user!.uid, username, age);
+                            } catch (e) {
+                              // give the email back so they can try again
+                              await result.user!.delete();
+                              throw Exception('] $e');
+                            }
                             isLoading.value = false;
                             // ignore: use_build_context_synchronously
                             showDialog(

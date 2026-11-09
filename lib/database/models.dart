@@ -34,6 +34,17 @@ class DbPrompt {
   String? type;
   int responses = 0;
 
+  /// segment: 'global', 'local' or 'friends'
+  String? location;
+
+  /// prompt format: 'fill' (fill in the blank); 'caption' comes later
+  String? kind;
+
+  /// who made the prompt; null means the Chuckler account
+  String? creatorUid;
+  String? creatorUsername;
+  String? creatorPhotoUrl;
+
   //If liked is 0 no selection -1 is for dislike 1 is for a like
   int liked = 0;
 

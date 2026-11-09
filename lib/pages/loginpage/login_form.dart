@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../data/prompt_day.dart';
 import '../../data/prompts.dart';
 import '../../data/users.dart';
 import '../../data/posts.dart';
@@ -89,6 +90,16 @@ class _LoginFormState extends State<LoginForm> {
       if (promptsToAdd.isEmpty) {
         //TODO ADD SOMETHING TO HANDLE IF NOTHING IS IN THE DB
       }
+      DbUser? theUser = await getLoggedInUserInfo(firestore, userId);
+      if (theUser != null) {
+        sessionService.setLoggedInUser(theUser);
+      }
+      // the user's answers to today's prompts, from one History read
+      Map<String, DbPost> myAnswers = theUser == null
+          ? {}
+          : await getMyAnswersForDay(firestore, theUser,
+              promptDayId(DateTime.now().toUtc()));
+
       //add to the session
       var getRand = promptsToAdd.length;
       Random r = Random();
@@ -103,15 +114,10 @@ class _LoginFormState extends State<LoginForm> {
               context, firestore, p.promptId!, p.promptDateId!);
         }
         promptService.addPrompt(p);
-        ///TODO get posts from DB first...Not good for testing
-        promptService.addPostForPrompt(await getUserPostForPrompt(firestore, userId, p.promptDateId!, p.promptId!));
+        promptService.addPostForPrompt(myAnswers[p.promptId]);
         i++;
       }
 
-      DbUser? theUser = await getLoggedInUserInfo(firestore, userId);
-      if (theUser != null) {
-        sessionService.setLoggedInUser(theUser);
-      }
       String? lTime = await getCachedLoginTime();
       sessionService.setLoginTime(lTime);
       if (!sessionService.firstLogin) {

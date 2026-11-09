@@ -2,41 +2,90 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../database/models.dart';
 import 'dart:math';
+import 'prompt_day.dart';
 
 //TODO LOOK AT IMPLEMENTING A DEBOUNCER TO PREVENT READ ABUSE
 
-/// Create a new post
+/// Creates the user's answer to a prompt: Posts/{id} plus its entry in the
+/// user's History/{yyyy-MM}, in one batch so both land or neither does.
+/// Prompt counts and the streak are updated by the onPostCreated Cloud
+/// Function. Throws if the write fails.
 Future<DbPost> createPost(
     FirebaseFirestore firebase, DbUser u, DbPrompt prompt, answer) async {
   final now = DateTime.now().toUtc();
   final timestamp = Timestamp.fromDate(now);
-  CollectionReference collection = firebase.collection('Posts');
   var rng = Random();
   var random1 = rng.nextInt(pow(2, 32).toInt());
   var random2 = rng.nextInt(pow(2, 32).toInt());
   var bigRandom = (random1 << 32) | random2;
-  //canPost[promptVal] = false;
-  String docId = "";
-  await collection
-      .add({
-        'answer': answer,
-        'dislikes': 0,
-        'likes': 0,
-        'wins': 0,
-        'uid': u.uid,
-        'username': u.username,
-        'promptId': prompt.promptId,
-        'random': bigRandom,
-        'promptDateId': prompt.promptDateId,
-        'date': timestamp
-      })
-      .then((docRef) => {docId = docRef.id})
-      .catchError((error) => print("Failed to add data: $error"));
+  final post = firebase.collection('Posts').doc();
+  final dayId = prompt.promptDateId!;
 
-  DbPost posted = DbPost(docId, answer, u.username, u.uid, 0, 0, 0,
+  final batch = firebase.batch();
+  batch.set(post, {
+    'answer': answer,
+    'dislikes': 0,
+    'likes': 0,
+    'wins': 0,
+    'uid': u.uid,
+    'username': u.username,
+    'promptId': prompt.promptId,
+    'random': bigRandom,
+    'promptDateId': dayId,
+    'date': timestamp,
+    'before': prompt.before,
+    'after': prompt.after,
+    'status': 'active',
+    'counts': {'matchups': 0, 'votes': 0, 'wins': 0, 'dislikes': 0},
+  });
+  batch.set(
+      historyRef(firebase, u.uid!, dayId),
+      {
+        'answers': {
+          '${dayId}_${prompt.promptId}': {
+            'postId': post.id,
+            'promptDateId': dayId,
+            'promptId': prompt.promptId,
+            'before': prompt.before,
+            'after': prompt.after,
+            'answer': answer,
+            'at': timestamp,
+          }
+        }
+      },
+      SetOptions(merge: true));
+  await batch.commit();
+
+  DbPost posted = DbPost(post.id, answer, u.username, u.uid, 0, 0, 0,
       prompt.promptId, prompt.promptDateId);
   posted.mine = true;
   return posted;
+}
+
+/// The History doc holding the user's answers for dayId's month
+DocumentReference<Map<String, dynamic>> historyRef(
+        FirebaseFirestore firestore, String uid, String dayId) =>
+    firestore
+        .collection('Users')
+        .doc(uid)
+        .collection('History')
+        .doc(historyMonthId(dayId));
+
+/// The user's answers on prompt day dayId, keyed by promptId, from one
+/// History doc read
+Future<Map<String, DbPost>> getMyAnswersForDay(
+    FirebaseFirestore firestore, DbUser user, String dayId) async {
+  final data = (await historyRef(firestore, user.uid!, dayId).get()).data();
+  final answers = data?['answers'] as Map<String, dynamic>? ?? {};
+  final mine = <String, DbPost>{};
+  for (final entry in answers.values) {
+    final a = entry as Map<String, dynamic>;
+    if (a['promptDateId'] != dayId) continue;
+    mine[a['promptId']] = DbPost(a['postId'], a['answer'], user.username,
+        user.uid, 0, 0, 0, a['promptId'], dayId)
+      ..mine = true;
+  }
+  return mine;
 }
 
 /// Description: Get the 10 posts from the database...put them in the

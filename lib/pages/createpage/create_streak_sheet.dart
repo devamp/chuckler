@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../data/prompt_day.dart';
 import '../../data/prompt_stats.dart';
 import '../../state/session_service.dart';
 import 'create_stats.dart';
@@ -12,21 +13,24 @@ const List<String> _monthNames = [
 
 /// Opens the streak calendar: which days the user answered, and where their
 /// streak stands among friends
-void showStreakSheet(BuildContext context, int streak) {
+/// With [sample], the made-up history that goes with the sample prompts.
+void showStreakSheet(BuildContext context, int streak, {bool sample = false}) {
   showModalBottomSheet(
     context: context,
     backgroundColor: Colors.black87,
     isScrollControlled: true,
     shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-    builder: (_) => StreakSheet(streak: streak),
+    builder: (_) => StreakSheet(streak: streak, sample: sample),
   );
 }
 
 class StreakSheet extends StatefulWidget {
   final int streak;
 
-  const StreakSheet({super.key, required this.streak});
+  final bool sample;
+
+  const StreakSheet({super.key, required this.streak, this.sample = false});
 
   @override
   State<StreakSheet> createState() => _StreakSheetState();
@@ -34,7 +38,8 @@ class StreakSheet extends StatefulWidget {
 
 class _StreakSheetState extends State<StreakSheet> {
   late final Future<StreakHistory> _history;
-  final DateTime _today = DateTime.now().toUtc();
+  /// today's prompt day, as a UTC midnight
+  final DateTime _today = promptDayDate(promptDayId(DateTime.now().toUtc()));
 
   /// first day of the month on show
   late DateTime _month = DateTime.utc(_today.year, _today.month);
@@ -47,7 +52,8 @@ class _StreakSheetState extends State<StreakSheet> {
     _history = getStreakHistory(
         Provider.of<FirebaseFirestore>(context, listen: false),
         user?.uid ?? '',
-        user?.username ?? '');
+        user?.username ?? '',
+        sample: widget.sample);
   }
 
   bool get _onCurrentMonth =>

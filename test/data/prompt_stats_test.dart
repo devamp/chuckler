@@ -6,17 +6,19 @@ import 'package:chuckler/data/prompt_stats.dart';
 import 'package:chuckler/data/sample_prompts.dart';
 import 'package:chuckler/database/models.dart';
 import 'package:chuckler/pages/createpage/create_prompt_card.dart';
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-DbPrompt typed(String? type) => DbPrompt('', '', 'd', 'p', null, type);
+DbPrompt located(String? location) =>
+    DbPrompt('', '', 'd', 'p', null, 'prompt')..location = location;
 
 void main() {
-  test('segmentOf reads the prompt type, defaulting to global', () {
-    expect(segmentOf(typed('friends')), Segment.friends);
-    expect(segmentOf(typed('Local')), Segment.local);
-    expect(segmentOf(typed('global')), Segment.global);
-    expect(segmentOf(typed('daily')), Segment.global);
-    expect(segmentOf(typed(null)), Segment.global);
+  test('segmentOf reads the prompt location, defaulting to global', () {
+    expect(segmentOf(located('friends')), Segment.friends);
+    expect(segmentOf(located('Local')), Segment.local);
+    expect(segmentOf(located('global')), Segment.global);
+    expect(segmentOf(located('nearby')), Segment.global);
+    expect(segmentOf(located(null)), Segment.global);
   });
 
   test('compactCount shortens large numbers', () {
@@ -37,10 +39,42 @@ void main() {
     expect(const AnswerStats(rank: 1).topPercent(100000), 1);
   });
 
-  test('timeLeftLabel counts down to the next UTC midnight', () {
-    expect(timeLeftLabel(DateTime.utc(2026, 11, 2, 18, 48)), '5h 12m left');
-    expect(timeLeftLabel(DateTime.utc(2026, 11, 2, 23, 30)), '30m left');
-    expect(timeLeftLabel(DateTime.utc(2026, 11, 2, 23, 59, 50)), '1m left');
+  test('timeLeftLabel counts down to the 05:00 UTC rollover', () {
+    expect(timeLeftLabel(DateTime.utc(2026, 11, 2, 23, 48)), '5h 12m left');
+    expect(timeLeftLabel(DateTime.utc(2026, 11, 3, 4, 30)), '30m left');
+    expect(timeLeftLabel(DateTime.utc(2026, 11, 3, 4, 59, 50)), '1m left');
+    expect(timeLeftLabel(DateTime.utc(2026, 11, 3, 5)), '24h 0m left');
+  });
+
+  group('StreakRecord', () {
+    const record =
+        StreakRecord(days: '1101111', from: '2026-11-01', longest: 4);
+
+    test('decodes the answered days', () {
+      expect(record.answeredDays, {
+        DateTime.utc(2026, 11, 1),
+        DateTime.utc(2026, 11, 2),
+        DateTime.utc(2026, 11, 4),
+        DateTime.utc(2026, 11, 5),
+        DateTime.utc(2026, 11, 6),
+        DateTime.utc(2026, 11, 7),
+      });
+    });
+
+    test('current streak counts trailing days, ending today or yesterday',
+        () {
+      expect(record.currentAsOf('2026-11-07'), 4);
+      expect(record.currentAsOf('2026-11-08'), 4); // today not answered yet
+      expect(record.currentAsOf('2026-11-09'), 0); // a day was missed
+      expect(const StreakRecord().currentAsOf('2026-11-08'), 0);
+    });
+
+    test('reads from a FriendView map, tolerating missing fields', () {
+      final r = StreakRecord.fromMap(
+          {'days': '11', 'from': '2026-11-07', 'current': 2, 'longest': 2});
+      expect(r.currentAsOf('2026-11-08'), 2);
+      expect(StreakRecord.fromMap(null).answeredDays, isEmpty);
+    });
   });
 
   test('sample stats depend on whether and when you answered', () {
@@ -78,5 +112,69 @@ void main() {
     expect(normalizePromptParts('', 'is my spirit animal'),
         ('', ' is my spirit animal'));
     expect(normalizePromptParts('Say "', '"'), ('Say " ', '"'));
+  });
+
+  group('live prompt stats', () {
+    late FakeFirebaseFirestore firestore;
+    final prompt = DbPrompt('a', '', '2026-11-08', 'p1', '2026-11-08', null);
+
+    setUp(() async {
+      firestore = FakeFirebaseFirestore();
+      await promptRef(firestore, prompt).set({
+        'counts': {'answers': 12, 'likes': 1},
+        'likedBy': ['someone'],
+      });
+    });
+
+    test('reads answers and likes from the prompt doc', () async {
+      final stats = await getPromptStats(firestore, 'me', prompt, null);
+      expect(stats.answers, 12);
+      expect(stats.likes, 1);
+      expect(stats.likedByMe, isFalse);
+      expect(stats.mine, isNull);
+    });
+
+    test('likePrompt adds and removes the uid with the count', () async {
+      await likePrompt(firestore, 'me', prompt, true);
+      var stats = await getPromptStats(firestore, 'me', prompt, null);
+      expect(stats.likes, 2);
+      expect(stats.likedByMe, isTrue);
+
+      await likePrompt(firestore, 'me', prompt, false);
+      stats = await getPromptStats(firestore, 'me', prompt, null);
+      expect(stats.likes, 1);
+      expect(stats.likedByMe, isFalse);
+    });
+
+    test('your answer\'s stats come from its post', () async {
+      await firestore.collection('Posts').doc('post1').set({
+        'counts': {'matchups': 3, 'votes': 5, 'wins': 4, 'dislikes': 1},
+        'rank': 2,
+      });
+      final mine = DbPost('post1', 'x', 'caden', 'me', 0, 0, 0, 'p1',
+          '2026-11-08');
+
+      final stats = (await getPromptStats(firestore, 'me', prompt, mine)).mine!;
+
+      expect([stats.matchups, stats.votes, stats.wins, stats.downvotes],
+          [3, 5, 4, 1]);
+      expect(stats.rank, 2);
+    });
+
+    test('the streak is read from FriendView/profile', () async {
+      await firestore
+          .collection('Users')
+          .doc('me')
+          .collection('FriendView')
+          .doc('profile')
+          .set({
+        'streak': {'days': '1011', 'from': '2026-11-05', 'longest': 2}
+      });
+
+      final record = await getStreakRecord(firestore, 'me');
+
+      expect(record.currentAsOf('2026-11-08'), 2);
+      expect(record.answeredDays, hasLength(3));
+    });
   });
 }
