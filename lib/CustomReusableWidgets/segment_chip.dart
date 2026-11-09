@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
 import '../data/matchups.dart';
 
+/// The name and icon shown for a segment
+(String, IconData) segmentLabel(Segment segment) => switch (segment) {
+      Segment.friends => ('Friends', Icons.people),
+      Segment.local => ('Local', Icons.place),
+      Segment.global => ('Global', Icons.public),
+    };
+
 /// Small label for a prompt's or matchup's segment
 class SegmentChip extends StatelessWidget {
   final Segment segment;
@@ -9,11 +16,7 @@ class SegmentChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (label, icon) = switch (segment) {
-      Segment.friends => ('Friends', Icons.people),
-      Segment.local => ('Local', Icons.place),
-      Segment.global => ('Global', Icons.public),
-    };
+    final (label, icon) = segmentLabel(segment);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(

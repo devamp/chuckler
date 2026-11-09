@@ -264,17 +264,25 @@ class YourAnswerPanel extends StatelessWidget {
                       color: Colors.amberAccent,
                       fontFamily: 'NewAmsterdam',
                       fontSize: 22)),
-              const Spacer(),
+              const SizedBox(width: 8),
               if (s != null && s.rank > 0)
-                Flexible(
-                  child: Text(
-                    '#${s.rank} of ${compactCount(answers)} · '
-                    'Top ${s.topPercent(answers)}%',
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontFamily: 'OpenSans',
-                        fontWeight: FontWeight.bold),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text('#${s.rank} of ${compactCount(answers)}',
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontFamily: 'OpenSans',
+                              fontWeight: FontWeight.bold)),
+                      Text('Top ${s.topPercent(answers)}%',
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              color: Colors.amberAccent,
+                              fontFamily: 'OpenSans',
+                              fontSize: 12)),
+                    ],
                   ),
                 ),
             ],

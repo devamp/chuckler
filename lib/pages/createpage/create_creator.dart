@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../CustomReusableWidgets/segment_chip.dart';
 import '../../data/friend_prompts.dart';
+import '../../data/matchups.dart';
 import 'create_stats.dart';
 
 /// A prompt creator's profile icon. The Chuckler account uses a placeholder
@@ -32,35 +34,63 @@ class CreatorAvatar extends StatelessWidget {
   }
 }
 
-/// The creator's icon and name at the top of a prompt card. Tap for their
-/// profile.
-class CreatorChip extends StatelessWidget {
+/// The top of a prompt card: the creator's icon and name, with the prompt's
+/// category under the name. Tap for the creator's profile.
+class CreatorHeader extends StatelessWidget {
   final PromptCreator creator;
+  final Segment segment;
   final bool isMe;
 
-  const CreatorChip({super.key, required this.creator, this.isMe = false});
+  const CreatorHeader(
+      {super.key,
+      required this.creator,
+      required this.segment,
+      this.isMe = false});
 
   @override
   Widget build(BuildContext context) {
+    final (label, icon) = segmentLabel(segment);
     return Tooltip(
       message: "${isMe ? 'Your' : "${creator.username}'s"} profile",
       child: InkWell(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         onTap: () => showCreatorProfile(context, creator, isMe: isMe),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CreatorAvatar(creator: creator, radius: 13),
-            const SizedBox(width: 6),
+            CreatorAvatar(creator: creator, radius: 19),
+            const SizedBox(width: 10),
             Flexible(
-              child: Text(isMe ? 'You' : creator.username,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontFamily: 'OpenSans',
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13)),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(isMe ? 'You' : creator.username,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontFamily: 'OpenSans',
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16)),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(icon, size: 14, color: Colors.amberAccent),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: Colors.white70,
+                                fontFamily: 'OpenSans',
+                                fontSize: 13)),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ],
         ),

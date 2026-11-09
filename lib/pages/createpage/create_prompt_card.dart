@@ -1,6 +1,5 @@
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
-import '../../CustomReusableWidgets/segment_chip.dart';
 import '../../data/friend_prompts.dart';
 import '../../data/prompt_stats.dart';
 import '../../data/prompts.dart';
@@ -72,36 +71,46 @@ class PromptCard extends StatelessWidget {
           if (!awaiting)
             Row(
               children: [
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: CreatorHeader(
+                        creator: creator,
+                        segment: segmentOf(prompt),
+                        isMe: mine),
+                  ),
+                ),
+                const SizedBox(width: 8),
                 Flexible(
-                    flex: 3,
-                    child: CreatorChip(creator: creator, isMe: mine)),
-                const SizedBox(width: 6),
-                SegmentChip(segment: segmentOf(prompt)),
-                if (isSamplePrompt(prompt)) ...[
-                  const SizedBox(width: 6),
-                  const Flexible(
-                      flex: 2,
-                      child: _Tag(text: 'Sample', color: Colors.white54)),
-                ],
-                if (isLocalFriendPrompt(prompt)) ...[
-                  const SizedBox(width: 6),
-                  const Flexible(
-                      flex: 2,
-                      child: _Tag(
-                          text: 'Only on this phone', color: Colors.white54)),
-                ],
-                const Spacer(),
-                Flexible(
-                  flex: 3,
-                  child: answered
-                      ? const _Tag(
-                          text: 'Answered',
-                          color: Colors.amberAccent,
-                          icon: Icons.check_circle)
-                      : _Tag(
-                          text: timeLeftLabel(now),
-                          color: Colors.white70,
-                          icon: Icons.timer_outlined),
+                  child: Align(
+                    alignment: Alignment.topRight,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        answered
+                            ? const _Tag(
+                                text: 'Answered',
+                                color: Colors.amberAccent,
+                                icon: Icons.check_circle)
+                            : _Tag(
+                                text: timeLeftLabel(now),
+                                color: Colors.white70,
+                                icon: Icons.timer_outlined),
+                        if (isSamplePrompt(prompt)) ...[
+                          const SizedBox(height: 4),
+                          const _Tag(text: 'Sample', color: Colors.white54),
+                        ],
+                        if (isLocalFriendPrompt(prompt)) ...[
+                          const SizedBox(height: 4),
+                          const _Tag(
+                              text: 'Not shared yet',
+                              color: Colors.white54,
+                              icon: Icons.phone_iphone),
+                        ],
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -110,7 +119,9 @@ class PromptCard extends StatelessWidget {
               child: AutoSizeText.rich(
                 TextSpan(
                   style: const TextStyle(
-                      fontSize: 30, color: Colors.white, fontFamily: 'OpenSans'),
+                      fontSize: 30,
+                      color: Colors.white,
+                      fontFamily: 'OpenSans'),
                   children: [
                     TextSpan(text: prompt.before),
                     answer.trim().isEmpty
@@ -233,7 +244,8 @@ class PageDots extends StatelessWidget {
   }
 }
 
-/// Answer streak in the header. Tap for the streak calendar.
+/// Answer streak in the header: a flame and the number of days. Tap for the
+/// streak calendar.
 class StreakChip extends StatelessWidget {
   final int days;
   final VoidCallback onTap;
@@ -243,7 +255,7 @@ class StreakChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Tooltip(
-      message: '$days days in a row answering a prompt',
+      message: '$days day streak',
       child: Material(
         color: Colors.black54,
         borderRadius: BorderRadius.circular(20),
@@ -257,12 +269,13 @@ class StreakChip extends StatelessWidget {
               children: [
                 const Icon(Icons.local_fire_department,
                     color: Colors.orangeAccent, size: 20),
-                const SizedBox(width: 4),
-                Text('$days day streak',
+                const SizedBox(width: 2),
+                Text('$days',
                     style: const TextStyle(
                         color: Colors.white,
                         fontFamily: 'OpenSans',
-                        fontWeight: FontWeight.bold)),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16)),
               ],
             ),
           ),

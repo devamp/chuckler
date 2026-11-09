@@ -298,38 +298,54 @@ class _CreatePageState extends State<CreatePage> {
     );
   }
 
+  /// Title centered, with the streak on the left and the + on the right
   Widget header(CreateService createService) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 16, 4),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Expanded(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: createService.streak > 0
+                  ? StreakChip(
+                      days: createService.streak,
+                      onTap: () =>
+                          showStreakSheet(context, createService.streak))
+                  : const SizedBox(),
+            ),
+          ),
+          Flexible(
+            flex: 3,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text("TODAY'S PROMPTS",
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontFamily: 'NewAmsterdam',
-                        fontSize: 30)),
+                const FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text("TODAY'S PROMPTS",
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontFamily: 'NewAmsterdam',
+                          fontSize: 30)),
+                ),
                 Text(
                   '${createService.answeredCount} of '
                   '${createService.answerableCount} answered',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                       color: Colors.white70, fontFamily: 'OpenSans'),
                 ),
               ],
             ),
           ),
-          if (createService.streak > 0)
-            StreakChip(
-                days: createService.streak,
-                onTap: () => showStreakSheet(context, createService.streak)),
-          const SizedBox(width: 8),
-          CreatePromptButton(
-            enabled: createService.canCreatePrompt(_now),
-            onTap: () => createPrompt(createService),
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: CreatePromptButton(
+                enabled: createService.canCreatePrompt(_now),
+                onTap: () => createPrompt(createService),
+              ),
+            ),
           ),
         ],
       ),

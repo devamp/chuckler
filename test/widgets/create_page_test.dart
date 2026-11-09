@@ -59,6 +59,9 @@ void main() {
       of: find.byType(PromptCard),
       matching: find.textContaining(text, findRichText: true));
 
+  Finder onCard(String text) => find.descendant(
+      of: find.byType(PromptCard), matching: find.text(text));
+
   Future<void> swipeLeft(WidgetTester tester) async {
     await tester.drag(find.byType(PageView), const Offset(-300, 0));
     await tester.pumpAndSettle();
@@ -83,7 +86,7 @@ void main() {
           findsOneWidget);
       expect(find.byType(TextField), findsNothing);
       expect(find.text('1 of 3 answered'), findsOneWidget);
-      expect(find.text('4 day streak'), findsOneWidget);
+      expect(find.byTooltip('4 day streak'), findsOneWidget);
       expect(create.length, 4);
     });
 
@@ -133,7 +136,8 @@ void main() {
       await swipeLeft(tester);
 
       expect(promptText('Rocky Road Rage'), findsOneWidget);
-      expect(find.text('#12 of 340 · Top 4%'), findsOneWidget);
+      expect(find.text('#12 of 340'), findsOneWidget);
+      expect(find.text('Top 4%'), findsOneWidget);
       expect(find.text('23'), findsOneWidget);
       // 23 wins of 36 votes
       expect(find.text('64%'), findsOneWidget);
@@ -165,16 +169,16 @@ void main() {
       await pumpCreatePage(tester);
       await swipeLeft(tester);
       final before = create.likesFor(1);
-      expect(find.text('$before'), findsOneWidget);
+      expect(onCard('$before'), findsOneWidget);
 
       await tester.tap(find.byTooltip('Like this prompt'));
       await tester.pump();
-      expect(find.text('${before + 1}'), findsOneWidget);
+      expect(onCard('${before + 1}'), findsOneWidget);
       expect(find.byIcon(Icons.favorite), findsOneWidget);
 
       await tester.tap(find.byTooltip('Unlike this prompt'));
       await tester.pump();
-      expect(find.text('$before'), findsOneWidget);
+      expect(onCard('$before'), findsOneWidget);
     });
 
     testWidgets('tapping the friends opens everyone who answered',
@@ -208,7 +212,7 @@ void main() {
     testWidgets('tapping the streak opens the calendar and top friend streaks',
         (tester) async {
       await pumpCreatePage(tester);
-      await tester.tap(find.text('4 day streak'));
+      await tester.tap(find.byTooltip('4 day streak'));
       await tester.pumpAndSettle();
 
       expect(find.text('4 DAY STREAK'), findsOneWidget);
@@ -237,7 +241,7 @@ void main() {
     testWidgets('the calendar goes back a month but not past this one',
         (tester) async {
       await pumpCreatePage(tester);
-      await tester.tap(find.text('4 day streak'));
+      await tester.tap(find.byTooltip('4 day streak'));
       await tester.pumpAndSettle();
 
       final next = tester.widget<IconButton>(
@@ -327,7 +331,7 @@ void main() {
       expect(find.text('YOUR ANSWER'), findsOneWidget);
       expect(tester.takeException(), isNull);
 
-      await tester.tap(find.text('4 day streak'));
+      await tester.tap(find.byTooltip('4 day streak'));
       await tester.pumpAndSettle();
       expect(find.text('4 DAY STREAK'), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -424,7 +428,7 @@ void main() {
       expect(create.page, 4);
       expect(promptText('My dog thinks'), findsOneWidget);
       expect(find.text('You'), findsOneWidget);
-      expect(find.text('Only on this phone'), findsOneWidget);
+      expect(find.text('Not shared yet'), findsOneWidget);
       expect(find.text('Friends'), findsOneWidget);
       expect(find.text('1 of 4 answered'), findsOneWidget);
       expect(find.text('No friends yet'), findsOneWidget);
