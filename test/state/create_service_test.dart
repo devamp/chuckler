@@ -90,15 +90,15 @@ void main() {
     expect(s.likesFor(0), base);
   });
 
-  test('created prompts follow the others, survive reloads, one a day',
+  test('created prompts follow the daily ones, survive reloads, one a day',
       () async {
     final now = DateTime.utc(2026, 11, 8, 15);
     s.setPrompts([aPrompt('a')], [null]);
     expect(s.canCreatePrompt(now), isTrue);
     expect(s.creatorFor(0).uid, chucklerUid);
 
-    final mine = await createFriendPrompt(
-        FakeFirebaseFirestore(), DbUser('me', 'caden', 0, 0, ''), 'Hi', '');
+    final mine = await createFriendPrompt(FakeFirebaseFirestore(),
+        DbUser('me', 'caden', 0, 0, ''), 'Hi', '', '2026-11-08');
     const me = PromptCreator(uid: 'me', username: 'caden');
     expect(s.addCreatedPrompt(mine, me, now), 1);
     expect(s.page, 1);
@@ -161,5 +161,34 @@ void main() {
       await s.loadStats(firestore, 'me', only: 0);
       expect(s.statsFor(0)!.answers, 8);
     });
+  });
+
+  test('friend prompts come after the daily ones and before samples', () {
+    final now = DateTime.utc(2026, 11, 8, 15);
+    s.setPrompts([aPrompt('a')], [null], includeSamples: true);
+    final theirs = friendPromptFromDoc('ben_2026-11-08', {
+      'before': 'Ben asks ', 'after': '.', 'dayId': '2026-11-08',
+      'creator': {'uid': 'ben', 'username': 'ben', 'photoUrl': ''},
+    });
+    s.setPage(2);
+    final shown = s.current!.promptId;
+    s.setFriendPrompts([theirs], {'ben_2026-11-08': aPost('ben_2026-11-08', 'hi')},
+        uid: 'me', nowUtc: now);
+    expect(s.prompts[1].promptId, 'ben_2026-11-08');
+    expect(isFriendPrompt(s.prompts[1]), isTrue);
+    expect(s.postFor(1)?.answer, 'hi');
+    expect(s.creatorFor(1).username, 'ben');
+    expect(s.length, 5); // a, ben's, 3 samples
+    expect(s.current!.promptId, shown); // stays on the same prompt
+    // someone else's prompt doesn't use up the user's one a day
+    expect(s.canCreatePrompt(now), isTrue);
+
+    final mine = friendPromptFromDoc('me_2026-11-08', {
+      'before': 'Mine ', 'after': '', 'dayId': '2026-11-08',
+      'creator': {'uid': 'me', 'username': 'caden', 'photoUrl': ''},
+    });
+    s.setFriendPrompts([theirs, mine], {}, uid: 'me', nowUtc: now);
+    expect(s.canCreatePrompt(now), isFalse);
+    expect(s.postFor(1), isNull);
   });
 }

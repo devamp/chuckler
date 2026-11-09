@@ -102,13 +102,6 @@ class PromptCard extends StatelessWidget {
                           const SizedBox(height: 4),
                           const _Tag(text: 'Sample', color: Colors.white54),
                         ],
-                        if (isLocalFriendPrompt(prompt)) ...[
-                          const SizedBox(height: 4),
-                          const _Tag(
-                              text: 'Not shared yet',
-                              color: Colors.white54,
-                              icon: Icons.phone_iphone),
-                        ],
                       ],
                     ),
                   ),

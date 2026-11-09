@@ -53,13 +53,13 @@ PromptDays/{yyyy-MM-dd}               { date, opensAt, endsAt }
                                       likedBy [uids]
     Results/{n}                       ANY SIGNED-IN USER, after the prompt ends: answers with usernames
 
-FriendPrompts/{promptId}              AUDIENCE: a prompt a user wrote for their friends
+FriendPrompts/{uid}_{dayId}           AUDIENCE: a prompt a user wrote for their friends
   Results/{n}                         AUDIENCE, after the prompt ends
 
 Posts/{postId}                        an answer; FRIENDS + YOU (author)
   CommentPages/{n}                    ANY SIGNED-IN USER: ~200 comments per page
 
-MatchUps/{id}                         ANY SIGNED-IN USER: two answers, anonymous
+MatchUps/{id}                         ANY SIGNED-IN USER (scope "public"), or the AUDIENCE (scope "friends"): two answers, anonymous
   Authors/names                       VOTERS ON THIS MATCHUP: who wrote each answer
   Private/owners                      SERVER ONLY: which uid wrote each answer
 
@@ -140,8 +140,8 @@ The username and photo are copied into the prompt, so the card costs no extra re
 ### Friend prompts
 
 ```
-FriendPrompts/{promptId}
-  before, after, createdAt, opensAt, endsAt
+FriendPrompts/{uid}_{dayId}
+  before, after, kind, dayId, createdAt
   creator: { uid, username, photoUrl }
   audience: [uids]              the creator + their friends when the prompt was made
                                 (open: or a group the creator picks; see TODO.md)
@@ -153,7 +153,9 @@ FriendPrompts/{promptId}
 - **Finding yours:** `FriendPrompts where audience array-contains me and status == "active"`. That's one read per active friend prompt, and the rule can approve it because the query itself asks for `audience` containing you.
 - **The audience is set by the server.** Rules can't cheaply check that every uid in a list is your friend (each check is a read, and rules allow only a handful per request). So the app writes the prompt without an audience, and a function fills it in from the creator's `Friends`. Until Blaze, a friend prompt can't reach anyone.
 - **Answers are normal `Posts`**, with `promptSource: "friends"` and `promptId` pointing here. Their matchups copy `audience`, so only the audience can read them. With a small audience, anonymous voting is thin cover; that's accepted.
-- **Limits:** cap prompts per user per day (1 to start) to control spam and cost. Friend prompts need report and block (App Store guideline 1.2), the same as answers and comments.
+- **Limits:** one per user per prompt day: the id is `{uid}_{dayId}` and the doc can't be rewritten. Friend prompts need report and block (App Store guideline 1.2), the same as answers and comments.
+- **Lifetime:** the prompt day it's made in (`dayId`), like daily prompts, so answers, matchups, streaks and results group with that day. `finishDay` marks it `ended`. One made late at night is short-lived; longer lifetimes are a follow-up.
+- **Rules:** the creator writes it with no `audience`, zero counts and their own `Users` username, only for today (`isToday` works out the prompt day from `request.time`). The audience can read and like it. Answers need you in its `audience`. Matchup reads need `scope == "public"` or you in `audience`, so every matchup has a `scope` and every matchup query names one (Home runs one query for each and merges them); `npm --prefix functions run migrate` gives older matchups `scope: "public"`. Voting on a friends matchup needs you in its audience.
 - **A creator snapshot:** the creator's username and photo are copied into `creator`; a rename updates them.
 
 ### Past results
@@ -335,7 +337,9 @@ Account tab:
 - Posts: the user's answers from History, read by month id (Firestore can't scan document ids in descending order), two months at a time, back to the month of the first answer (the streak's `from`). Answers whose day isn't finished read their post's live counts.
 - Notifications (`Users/{uid}/Notifications`) and achievements (`awards` on the profile), as above. Daily results run by script in the emulator.
 
-Not live yet: ranking and checkpoints, friend profiles, friend prompts, Past results, prompt dislikes, undoing a dislike, push notifications.
+Friend prompts: `FriendPrompts/{uid}_{dayId}` with the audience set by `onFriendPromptCreated` (which also notifies each friend); answers are `Posts` with `promptSource: "friends"`; `createMatchup` gives their matchups `scope: "friends"` and the prompt's `audience`. The Create tab lists today's friend prompts (an `audience array-contains` query plus a direct read of your own) after the daily ones; Home's Friends filter shows their matchups.
+
+Not live yet: ranking and checkpoints, Past results, prompt dislikes, undoing a dislike, push notifications, reporting or removing a friend prompt.
 
 ## Before the new layout
 

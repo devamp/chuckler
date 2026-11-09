@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'friend_prompts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../database/models.dart';
 import 'dart:math';
@@ -37,6 +38,9 @@ Future<DbPost> createPost(
     'after': prompt.after,
     'status': 'active',
     'counts': {'matchups': 0, 'votes': 0, 'wins': 0, 'dislikes': 0},
+    // answers to friend prompts pair into matchups only that prompt's
+    // audience sees
+    if (isFriendPrompt(prompt)) 'promptSource': 'friends',
   });
   batch.set(
       historyRef(firebase, u.uid!, dayId),

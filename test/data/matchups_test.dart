@@ -33,6 +33,46 @@ void main() {
       expect(ms[1].segment, Segment.friends);
     });
 
+    test('adds friend prompt matchups I\'m in the audience of, in order',
+        () async {
+      Map<String, dynamic> friendDoc(String id, int secondsAgo,
+              List<String> audience, List<String> posts) =>
+          {
+            ...matchupDoc(sampleMatchups().first,
+                dayId: today,
+                createdAt: now.subtract(Duration(seconds: secondsAgo))),
+            'scope': 'friends',
+            'audience': audience,
+            'postIds': posts,
+            'answers': [
+              {'postId': posts[0], 'answer': 'x'},
+              {'postId': posts[1], 'answer': 'y'},
+            ],
+          };
+      // 3.5 min ago: between sample-2 (4 min ago) and sample-3 (3 min ago)
+      await firestore.collection('MatchUps').doc('friends-1').set(
+          friendDoc('friends-1', 210, ['me', 'ben'], ['f1', 'f2']));
+      // not for me
+      await firestore.collection('MatchUps').doc('friends-2').set(
+          friendDoc('friends-2', 60, ['ben', 'cleo'], ['f3', 'f4']));
+      // has my own answer, known only from my History
+      await firestore.collection('MatchUps').doc('friends-3').set(
+          friendDoc('friends-3', 60, ['me', 'ben'], ['mine', 'f5']));
+      await firestore.doc('Users/me/History/${today.substring(0, 7)}').set({
+        'answers': {
+          '${today}_ben_$today': {'postId': 'mine', 'promptDateId': today},
+        },
+      });
+
+      final ms = await getVotingMatchups(firestore, 'me', {}, now: now);
+      expect(ms.map((m) => m.id), [
+        'sample-1', 'sample-2', 'friends-1', 'sample-3', 'sample-4',
+        'sample-5'
+      ]);
+      expect(ms[2].scope, MatchupScope.friends);
+      expect(ms[0].scope, MatchupScope.public);
+    });
+
     test('leaves out other days', () async {
       await firestore.collection('MatchUps').doc('old').set(matchupDoc(
           sampleMatchups().first,

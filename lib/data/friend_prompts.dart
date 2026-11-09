@@ -2,15 +2,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../database/models.dart';
 import 'sample_prompts.dart';
 
-// Who made each prompt, and prompts users write for their friends. Friend
-// prompts stay on the phone for now; the TODO(cloud) notes and
-// docs/data-model.md (FriendPrompts, Official accounts) describe the real
-// collection.
+// Who made each prompt, and prompts users write for their friends.
 //
-// TODO(cloud): load the user's friend prompts with
-//   FriendPrompts where audience array-contains uid and status == 'active'
-// (one read per active friend prompt) and add them to the Create tab after
-// the daily prompts. Each doc carries creator: {uid, username, photoUrl}.
+// Friend prompts are FriendPrompts/{uid}_{dayId} (one per user per prompt
+// day). The creator writes one without an audience; the
+// onFriendPromptCreated function sets audience to the creator and their
+// friends, and only they can read it, answer it and see its matchups. It
+// lives for the prompt day it was made in. See docs/data-model.md.
 
 enum CreatorKind { user, official, sponsor }
 
@@ -47,16 +45,69 @@ const PromptCreator chuckler = PromptCreator(
       'part. 🤡',
 );
 
-/// promptDateId of friend prompts made on this phone. They never leave it
-/// until FriendPrompts exists, so answers to them stay local too.
-const String localFriendPromptDayId = 'friend-local';
-
 /// Prompts whose answers, likes and stats stay on the phone
-bool isLocalPrompt(DbPrompt prompt) =>
-    isSamplePrompt(prompt) || prompt.promptDateId == localFriendPromptDayId;
+bool isLocalPrompt(DbPrompt prompt) => isSamplePrompt(prompt);
 
-bool isLocalFriendPrompt(DbPrompt prompt) =>
-    prompt.promptDateId == localFriendPromptDayId;
+/// A prompt a friend (or the user) wrote, from FriendPrompts
+bool isFriendPrompt(DbPrompt prompt) => prompt.type == friendPromptType;
+
+/// DbPrompt.type of friend prompts
+const String friendPromptType = 'friend';
+
+CollectionReference<Map<String, dynamic>> friendPromptsRef(
+        FirebaseFirestore firestore) =>
+    firestore.collection('FriendPrompts');
+
+/// The id of [uid]'s friend prompt on prompt day [dayId]
+String friendPromptId(String uid, String dayId) => '${uid}_$dayId';
+
+/// Maps a FriendPrompts doc to a DbPrompt. Its promptDateId is the day it
+/// lives on, so answers and matchups group with that day.
+DbPrompt friendPromptFromDoc(String id, Map<String, dynamic> data) {
+  final creator = data['creator'] as Map<String, dynamic>?;
+  final counts = data['counts'] as Map<String, dynamic>?;
+  final dayId = data['dayId'] as String? ?? '';
+  return DbPrompt(data['before'] ?? '', data['after'] ?? '', dayId, id, dayId,
+      friendPromptType)
+    ..responses = (counts?['answers'] as num?)?.toInt() ?? 0
+    ..location = 'friends'
+    ..kind = data['kind'] ?? 'fill'
+    ..creatorUid = creator?['uid']
+    ..creatorUsername = creator?['username']
+    ..creatorPhotoUrl = creator?['photoUrl'];
+}
+
+/// Today's friend prompts for [uid]: those whose audience includes them,
+/// plus their own (read directly, in case the audience isn't set yet).
+/// Oldest first, so the order stays put as new ones arrive.
+Future<List<DbPrompt>> getFriendPrompts(
+    FirebaseFirestore firestore, String uid, String dayId) async {
+  final results = await Future.wait([
+    friendPromptsRef(firestore)
+        .where('audience', arrayContains: uid)
+        .where('dayId', isEqualTo: dayId)
+        .get()
+        .then((q) => q.docs),
+    friendPromptsRef(firestore)
+        .doc(friendPromptId(uid, dayId))
+        .get()
+        .then((d) => d.exists ? [d] : <DocumentSnapshot<Map<String, dynamic>>>[]),
+  ]);
+  final byId = <String, DocumentSnapshot<Map<String, dynamic>>>{};
+  for (final list in results) {
+    for (final d in list) {
+      byId[d.id] = d;
+    }
+  }
+  final docs = byId.values.where((d) => d.data() != null).toList()
+    ..sort((a, b) {
+      final ta = a.data()!['createdAt'] as Timestamp?;
+      final tb = b.data()!['createdAt'] as Timestamp?;
+      if (ta == null || tb == null) return a.id.compareTo(b.id);
+      return ta.compareTo(tb);
+    });
+  return [for (final d in docs) friendPromptFromDoc(d.id, d.data()!)];
+}
 
 /// Longest text allowed on either side of the blank
 const int maxPromptPartLength = 120;
@@ -73,19 +124,34 @@ const int maxPromptPartLength = 120;
   return (b, a);
 }
 
-/// Creates a prompt for the user's friends and returns it
+/// Writes a prompt for the user's friends on prompt day [dayId] and
+/// returns it. The rules allow one per user per day (the id is
+/// {uid}_{dayId}, and docs are never rewritten), so a second one throws.
 Future<DbPrompt> createFriendPrompt(FirebaseFirestore firestore, DbUser user,
-    String before, String after) async {
-  // TODO(cloud): add FriendPrompts/{id} with {before, after, createdAt,
-  //   creator: {uid, username, photoUrl}, status: 'active', counts: {}, likedBy: []}
-  //   and no audience. A Cloud Function fills audience from the creator's
-  //   Users/{uid}/Friends, since rules can't check a list of friends.
-  //   Rules: creator.uid == request.auth.uid, no audience on create, and at
-  //   most one friend prompt per user per day (keep a lastFriendPromptDay on
-  //   Users/{uid}/Private/account, checked with getAfter).
+    String before, String after, String dayId) async {
   final (b, a) = normalizePromptParts(before, after);
-  return DbPrompt(b, a, localFriendPromptDayId,
-      'friend-${DateTime.now().microsecondsSinceEpoch}', null, null)
-    ..location = 'friends'
-    ..kind = 'fill';
+  final id = friendPromptId(user.uid!, dayId);
+  final creator = {
+    'uid': user.uid,
+    'username': user.username ?? '',
+    'photoUrl': user.profilePicture,
+  };
+  await friendPromptsRef(firestore).doc(id).set({
+    'before': b,
+    'after': a,
+    'kind': 'fill',
+    'dayId': dayId,
+    'createdAt': FieldValue.serverTimestamp(),
+    'creator': creator,
+    'status': 'active',
+    'counts': {'answers': 0, 'likes': 0, 'dislikes': 0},
+    'likedBy': [],
+  });
+  return friendPromptFromDoc(id, {
+    'before': b,
+    'after': a,
+    'kind': 'fill',
+    'dayId': dayId,
+    'creator': creator,
+  });
 }

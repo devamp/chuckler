@@ -14,7 +14,9 @@ const {
   doc, getDoc, setDoc, updateDoc, deleteDoc,
   arrayUnion, arrayRemove, increment, setLogLevel,
   writeBatch, collection, getDocs, runTransaction, Timestamp,
+  query, where, orderBy, serverTimestamp,
 } = require("firebase/firestore");
+const {promptDayId, addDays} = require("../promptDay");
 
 // Denied writes are expected here; don't log each one.
 setLogLevel("error");
@@ -451,8 +453,8 @@ async function seedMatchup() {
     "Posts/carols": newPost("carol"),
     [MATCHUP]: {
       promptDateId: "2026-11-08", promptId: "p1", before: "My ",
-      after: " is ready.", segment: "global", status: "active",
-      postIds: ["bobs", "carols"],
+      after: " is ready.", segment: "global", scope: "public",
+      status: "active", postIds: ["bobs", "carols"],
       answers: [
         {postId: "bobs", answer: "a goose", wins: 0, dislikes: 0},
         {postId: "carols", answer: "a goose", wins: 0, dislikes: 0},
@@ -915,5 +917,143 @@ describe("notifications", () => {
         {type: "friendRequest", text: "hi", seen: false}));
     const db = env.unauthenticatedContext().firestore();
     await assertFails(getDoc(doc(db, N)));
+  });
+});
+
+describe("friend prompts", () => {
+  const today = promptDayId(new Date());
+  const FP = `FriendPrompts/alice_${today}`;
+
+  /**
+   * The app's new friend prompt by alice.
+   * @param {object} extra fields to add or override
+   * @return {object}
+   */
+  function friendPrompt(extra = {}) {
+    return {
+      before: "My dog's secret job is ", after: ".", kind: "fill",
+      dayId: today, createdAt: serverTimestamp(), status: "active",
+      creator: {uid: "alice", username: "alice", photoUrl: ""},
+      counts: {answers: 0, likes: 0, dislikes: 0}, likedBy: [],
+      ...extra,
+    };
+  }
+
+  it("you can write one for today, once", async () => {
+    await assertSucceeds(setDoc(doc(as("alice"), FP), friendPrompt()));
+    // a second write to the same day's id is an update: refused
+    await assertFails(setDoc(doc(as("alice"), FP), friendPrompt()));
+  });
+
+  it("refuses the wrong id, day, creator, audience or counts", async () => {
+    const yesterday = addDays(today, -1);
+    await assertFails(setDoc(doc(as("alice"), `FriendPrompts/bob_${today}`),
+        friendPrompt()));
+    await assertFails(setDoc(doc(as("alice"), `FriendPrompts/alice_x`),
+        friendPrompt()));
+    await assertFails(setDoc(doc(as("alice"),
+        `FriendPrompts/alice_${yesterday}`), friendPrompt({dayId: yesterday})));
+    await assertFails(setDoc(doc(as("alice"), FP), friendPrompt(
+        {creator: {uid: "alice", username: "bob", photoUrl: ""}})));
+    await assertFails(setDoc(doc(as("alice"), FP),
+        friendPrompt({audience: ["alice", "carol"]})));
+    await assertFails(setDoc(doc(as("alice"), FP),
+        friendPrompt({counts: {answers: 5, likes: 0, dislikes: 0}})));
+    await assertFails(setDoc(doc(as("alice"), FP),
+        friendPrompt({before: "", after: ""})));
+    await assertFails(setDoc(doc(as("alice"), FP),
+        friendPrompt({before: "x".repeat(121)})));
+    await assertFails(setDoc(doc(as("alice"), FP),
+        friendPrompt({createdAt: new Date(0)})));
+    const db = env.unauthenticatedContext().firestore();
+    await assertFails(setDoc(doc(db, FP), friendPrompt()));
+  });
+
+  describe("once the audience is set", () => {
+    beforeEach(async () => {
+      await seed({[FP]: {...friendPrompt({createdAt: new Date()}),
+        audience: ["alice", "bob"]}});
+    });
+
+    it("the audience reads it, others don't", async () => {
+      await assertSucceeds(getDoc(doc(as("alice"), FP)));
+      await assertSucceeds(getDoc(doc(as("bob"), FP)));
+      await assertFails(getDoc(doc(as("carol"), FP)));
+      await assertSucceeds(getDocs(query(collection(as("bob"), "FriendPrompts"),
+          where("audience", "array-contains", "bob"),
+          where("dayId", "==", today))));
+      await assertFails(getDocs(query(collection(as("bob"), "FriendPrompts"),
+          where("dayId", "==", today))));
+    });
+
+    it("the audience can like it; nobody edits or deletes it", async () => {
+      await assertSucceeds(updateDoc(doc(as("bob"), FP),
+          {"likedBy": arrayUnion("bob"), "counts.likes": increment(1)}));
+      await assertFails(updateDoc(doc(as("carol"), FP),
+          {"likedBy": arrayUnion("carol"), "counts.likes": increment(1)}));
+      await assertFails(updateDoc(doc(as("alice"), FP), {before: "x"}));
+      await assertFails(updateDoc(doc(as("alice"), FP),
+          {audience: ["alice", "bob", "carol"]}));
+      await assertFails(deleteDoc(doc(as("alice"), FP)));
+    });
+
+    it("only the audience answers it, on its day", async () => {
+      const answer = (uid, extra = {}) => newPost(uid, {
+        promptSource: "friends", promptId: `alice_${today}`,
+        promptDateId: today, ...extra});
+      await assertSucceeds(setDoc(doc(as("bob"), "Posts/fb"), answer("bob")));
+      await assertFails(setDoc(doc(as("carol"), "Posts/fc"), answer("carol")));
+      await assertFails(setDoc(doc(as("bob"), "Posts/fb2"),
+          answer("bob", {promptDateId: addDays(today, -1)})));
+    });
+  });
+
+  describe("friends matchups", () => {
+    const FM = "MatchUps/fm";
+    beforeEach(async () => {
+      await seedMatchup(); // a public one
+      await seed({
+        [FM]: {promptDateId: today, promptId: `alice_${today}`,
+          scope: "friends", audience: ["alice", "bob", "carol"],
+          createdAt: new Date(), status: "active",
+          postIds: ["bobs", "carols"], answers: [
+            {postId: "bobs", answer: "x", wins: 0, dislikes: 0},
+            {postId: "carols", answer: "y", wins: 0, dislikes: 0}]},
+        [`${FM}/Private/owners`]: {uids: ["bob", "carol"]},
+        "MatchUps/pub": {promptDateId: today, scope: "public",
+          createdAt: new Date(), postIds: ["bobs", "carols"], answers: []},
+      });
+    });
+
+    it("only the audience reads them", async () => {
+      await assertSucceeds(getDoc(doc(as("alice"), FM)));
+      await assertFails(getDoc(doc(as("dave"), FM)));
+      await assertSucceeds(getDoc(doc(as("dave"), MATCHUP)));
+    });
+
+    it("a matchup without a scope is hidden until migrated", async () => {
+      await seed({"MatchUps/old": {promptDateId: today, answers: []}});
+      await assertFails(getDoc(doc(as("dave"), "MatchUps/old")));
+    });
+
+    it("Home's two queries are allowed; an unscoped one isn't", async () => {
+      const db = as("dave");
+      await assertSucceeds(getDocs(query(collection(db, "MatchUps"),
+          where("scope", "==", "public"), where("promptDateId", "==", today),
+          orderBy("createdAt"))));
+      await assertSucceeds(getDocs(query(collection(as("alice"), "MatchUps"),
+          where("audience", "array-contains", "alice"),
+          where("promptDateId", "==", today), orderBy("createdAt"))));
+      await assertFails(getDocs(query(collection(db, "MatchUps"),
+          where("promptDateId", "==", today), orderBy("createdAt"))));
+    });
+
+    it("only the audience votes on them", async () => {
+      const v = (uid) => ({uid, matchupId: "fm", card: 0, type: "win",
+        promptDateId: today, at: new Date()});
+      await assertSucceeds(setDoc(doc(as("alice"), "Votes/fm_alice"),
+          v("alice")));
+      await assertFails(setDoc(doc(as("dave"), "Votes/fm_dave"), v("dave")));
+    });
   });
 });

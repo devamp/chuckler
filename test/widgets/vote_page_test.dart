@@ -2,6 +2,7 @@
 // stored in a fake Firestore.
 
 import 'package:chuckler/data/matchups.dart';
+import 'package:chuckler/data/prompt_day.dart';
 import 'package:chuckler/data/sample_matchups.dart';
 import 'package:chuckler/database/models.dart';
 import 'package:chuckler/pages/feedpage/feed_page.dart';
@@ -531,6 +532,58 @@ void main() {
         () => firestore.doc('Users/u-sky/FriendRequests/me').get());
     expect(request!.exists, isTrue);
     expect(request.data()!['username'], 'caden');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets("Friends shows matchups for friend prompts you're in",
+      (tester) async {
+    await loadRealFonts();
+    SharedPreferences.setMockInitialValues({voteTutorialSeenKey: true});
+    voting = VotingService();
+    firestore = FakeFirebaseFirestore();
+    final now = DateTime.now().toUtc();
+    await tester.runAsync(() async {
+      await seedMatchups(firestore, sampleMatchups());
+      await firestore.collection('MatchUps').doc('friends-1').set({
+        ...matchupDoc(sampleMatchups().first,
+            dayId: promptDayId(now), createdAt: now),
+        'before': 'Ben wants to know: ',
+        'after': '?',
+        'scope': 'friends',
+        'audience': ['me', 'ben', 'cleo'],
+        'postIds': ['fb', 'fc'],
+        'answers': [
+          {'postId': 'fb', 'answer': 'a haunted toaster'},
+          {'postId': 'fc', 'answer': 'three raccoons'},
+        ],
+      });
+    });
+    await tester.pumpWidget(MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(
+            value: SessionService()
+              ..setLoggedInUser(DbUser('me', 'caden', 0, 0, ''))),
+        ChangeNotifierProvider.value(value: voting),
+        ChangeNotifierProvider.value(value: PromptService()),
+        Provider<FirebaseFirestore>.value(value: firestore),
+      ],
+      child: const MaterialApp(home: Scaffold(body: FeedPage())),
+    ));
+    await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 50)));
+    await tester.pumpAndSettle();
+    expect(voting.countFor(MatchupFilter.friends), 1);
+    expect(voting.countFor(MatchupFilter.all), 6);
+
+    await tester.tap(find.byType(MatchupFilterButton));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(
+        of: find.byType(PopupMenuItem<MatchupFilter>),
+        matching: find.text('Friends')));
+    await tester.pumpAndSettle();
+    expect(answer('a haunted toaster'), findsOneWidget);
+    expect(answer('three raccoons'), findsOneWidget);
+    expect(find.textContaining('Ben wants to know', findRichText: true),
+        findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

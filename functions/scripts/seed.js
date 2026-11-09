@@ -10,6 +10,8 @@
 //   - answers from every test account to today's prompts, so there is
 //     something to vote on. With the functions emulator running, the
 //     createMatchup function pairs them into matchups (4 per prompt).
+//   - ben and cleo each write a friend prompt (seen by ava, ben and cleo),
+//     and both answer ben's: a friends matchup ava can vote on.
 // It overwrites the account and prompt docs if they exist, skips answers
 // that already exist, and leaves everything else alone. Run it on fresh
 // emulators: re-running resets the prompts' counts.
@@ -298,6 +300,73 @@ async function answerToday(db, today) {
   return answers;
 }
 
+// Friend prompts for today, by uid: written like the app's
+// createFriendPrompt, with the audience left to onFriendPromptCreated.
+const FRIEND_PROMPTS = {
+  "test-ben": ["The real reason ben is always late: ", "."],
+  "test-cleo": ["cleo's next tattoo should say ", "."],
+};
+// Answers to ben's friend prompt, so ava has a friends matchup to vote on.
+const FRIEND_ANSWERS = {
+  "test-ben": "a time zone of my own",
+  "test-cleo": "he's been in the parking lot for an hour",
+};
+
+/**
+ * ben and cleo each write a friend prompt today (their audience is each
+ * other and ava), and they both answer ben's, which makes one matchup only
+ * ava, ben and cleo can see. Needs the functions emulator. Skips what
+ * already exists.
+ * @param {object} db
+ * @param {string} today
+ * @return {Promise<number>} answers written
+ */
+async function seedFriendPrompts(db, today) {
+  const byUid = Object.fromEntries(TEST_USERS.map((u) => [u.uid, u]));
+  for (const [uid, [before, after]] of Object.entries(FRIEND_PROMPTS)) {
+    const ref = db.doc(`FriendPrompts/${uid}_${today}`);
+    if ((await ref.get()).exists) continue;
+    await ref.set({
+      before, after, kind: "fill", dayId: today,
+      createdAt: Timestamp.now(), status: "active",
+      creator: {uid, username: byUid[uid].username, photoUrl: ""},
+      counts: {answers: 0, likes: 0, dislikes: 0}, likedBy: [],
+    });
+  }
+  // the audience comes from the function
+  for (let i = 0; i < 20; i++) {
+    const p = await db.doc(`FriendPrompts/test-ben_${today}`).get();
+    if (p.data()?.audience) break;
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  const promptId = `test-ben_${today}`;
+  const [before, after] = FRIEND_PROMPTS["test-ben"];
+  let written = 0;
+  for (const [uid, answer] of Object.entries(FRIEND_ANSWERS)) {
+    const postRef = db.doc(`Posts/seed-${promptId}-${uid}`);
+    if ((await postRef.get()).exists) continue;
+    const at = Timestamp.now();
+    const batch = db.batch();
+    batch.set(postRef, {
+      answer, uid, username: byUid[uid].username, promptId,
+      promptDateId: today, promptSource: "friends", date: at,
+      likes: 0, dislikes: 0, wins: 0, random: 1, before, after,
+      status: "active", counts: {matchups: 0, votes: 0, wins: 0,
+        dislikes: 0, likes: 0, comments: 0},
+    });
+    batch.set(db.doc(`Users/${uid}/History/${today.substring(0, 7)}`), {
+      answers: {[`${today}_${promptId}`]: {
+        postId: postRef.id, promptDateId: today, promptId,
+        before, after, answer, at,
+      }},
+    }, {merge: true});
+    await batch.commit();
+    written++;
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return written;
+}
+
 /** Seeds everything, or with --answers only today's answers. */
 async function main() {
   initializeApp({projectId: PROJECT_ID});
@@ -308,7 +377,9 @@ async function main() {
   // friends as they are. For when the day rolls over on running emulators.
   if (process.argv.includes("--answers")) {
     const answers = await answerToday(db, today);
-    console.log(`${answers} new answers to today's prompts (${today}) on ` +
+    const friendAnswers = await seedFriendPrompts(db, today);
+    console.log(`${answers} new answers to today's prompts (${today}) and ` +
+        `${friendAnswers} to ben's friend prompt on ` +
         `${process.env.FIRESTORE_EMULATOR_HOST}`);
     return;
   }
@@ -380,6 +451,7 @@ async function main() {
   await batch.commit();
 
   const answers = await answerToday(db, today);
+  const friendAnswers = await seedFriendPrompts(db, today);
 
   console.log(`Seeded project ${PROJECT_ID} on ` +
       `${process.env.FIRESTORE_EMULATOR_HOST}:`);
@@ -389,6 +461,8 @@ async function main() {
   console.log("  friends: ava, ben, cleo; ava has requests from dev " +
       "(username) and eli (email)");
   console.log(`  ${answers} new answers to today's prompts`);
+  console.log(`  friend prompts by ben and cleo; ${friendAnswers} answers ` +
+      "to ben's (a friends matchup for ava)");
 }
 
 main().catch((e) => {

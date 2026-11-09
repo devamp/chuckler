@@ -48,14 +48,17 @@ Map<String, dynamic> postDoc({
 
 /// A MatchUps doc as createMatchup writes it, from a Matchup
 Map<String, dynamic> matchupDoc(Matchup m,
-    {required String dayId, required DateTime createdAt}) {
+    {required String dayId,
+    required DateTime createdAt,
+    List<String> audience = const []}) {
   return {
     'promptDateId': dayId,
     'promptId': m.promptId,
     'before': m.promptBefore,
     'after': m.promptAfter,
     'segment': m.segment.name,
-    if (m.scope == MatchupScope.friends) 'scope': 'friends',
+    'scope': m.scope == MatchupScope.friends ? 'friends' : 'public',
+    if (m.scope == MatchupScope.friends) 'audience': audience,
     'createdAt': Timestamp.fromDate(createdAt),
     'status': 'active',
     'postIds': [for (final a in m.answers) a.postId],

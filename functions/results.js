@@ -100,6 +100,12 @@ async function finishDay(db, dayId, {force = false} = {}) {
           resultsText(dayId, answers), {dayId}));
     }
   }
+  // the day's friend prompts close with it
+  const friendPrompts = await db.collection("FriendPrompts")
+      .where("dayId", "==", dayId).get();
+  for (const p of friendPrompts.docs) {
+    writer.update(p.ref, {status: "ended"});
+  }
   writer.set(dayRef, {resultsAt: FieldValue.serverTimestamp()},
       {merge: true});
   await writer.close();

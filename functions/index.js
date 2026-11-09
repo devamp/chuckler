@@ -30,6 +30,19 @@ function matchupAnswer(postId, post) {
     commentCount: post.commentCount || 0, preview: post.preview || []};
 }
 
+/**
+ * The prompt a post answers: a daily prompt, or a friend prompt for posts
+ * with promptSource "friends".
+ * @param {object} post
+ * @return {object} the prompt's doc ref
+ */
+function promptRef(post) {
+  return post.promptSource === "friends" ?
+    db.collection("FriendPrompts").doc(post.promptId) :
+    db.collection("PromptDays").doc(post.promptDateId)
+        .collection("Prompts").doc(post.promptId);
+}
+
 // createMatchup pairs a new post with the oldest unmatched post for the same
 // prompt, or marks it unmatched to wait for the next one. It runs in a
 // transaction, so two posts created together can't claim the same partner.
@@ -55,8 +68,8 @@ exports.createMatchup = onDocumentCreated("Posts/{postId}", async (event) => {
         tx.update(postRef, {matched: false});
         return;
       }
-      const prompt = (await tx.get(db.doc(
-          `PromptDays/${promptDateId}/Prompts/${promptId}`))).data() || {};
+      const friends = post.promptSource === "friends";
+      const prompt = (await tx.get(promptRef(post))).data() || {};
       const otherPost = other.data();
       // the authors' photos, for the names shown after someone votes
       const [otherUser, user] = await Promise.all([otherPost.uid, post.uid]
@@ -68,11 +81,12 @@ exports.createMatchup = onDocumentCreated("Posts/{postId}", async (event) => {
         promptDateId, promptId,
         before: prompt.before ?? post.before ?? "",
         after: prompt.after ?? post.after ?? "",
-        segment: prompt.location || "global",
-        // who the prompt is for: daily prompts are public; matchups for
-        // friend prompts (not live yet) will be "friends", seen only by
-        // the creator's friends. The Home filter splits on this.
-        scope: "public",
+        segment: friends ? "friends" : prompt.location || "global",
+        // who the prompt is for: daily prompts are public; friend prompts'
+        // matchups are only for the prompt's audience (the rules check
+        // it). The Home filter splits on this.
+        scope: friends ? "friends" : "public",
+        ...(friends ? {audience: prompt.audience || []} : {}),
         createdAt: FieldValue.serverTimestamp(),
         status: "active",
         postIds: [other.id, postId],
@@ -228,8 +242,7 @@ exports.onPostCreated = onDocumentCreated("Posts/{postId}", async (event) => {
   }
 
   try {
-    await db.collection("PromptDays").doc(promptDateId)
-        .collection("Prompts").doc(promptId)
+    await promptRef(post)
         .update({"counts.answers": FieldValue.increment(1)});
   } catch (e) {
     console.log(`onPostCreated: prompt ${promptDateId}/${promptId}: ${e}`);
@@ -284,6 +297,36 @@ exports.onFriendWritten = onDocumentWritten(
         }
       } catch (e) {
         console.log(`onFriendWritten: ${uid}: ${e}`);
+      }
+    });
+
+// onFriendPromptCreated fills in a friend prompt's audience: the creator
+// and their friends right now (friends added later don't see it). Rules
+// can't check a list of friends, so the app writes the prompt without one.
+// Each friend gets a notification.
+exports.onFriendPromptCreated = onDocumentCreated(
+    "FriendPrompts/{promptId}", async (event) => {
+      const prompt = event.data.data() || {};
+      const creator = prompt.creator || {};
+      if (!creator.uid) return;
+      try {
+        const friends = await db.collection("Users").doc(creator.uid)
+            .collection("Friends").get();
+        const uids = friends.docs.map((d) => d.id);
+        await event.data.ref.update({audience: [creator.uid, ...uids]});
+        const text = `${creator.username || "A friend"} wrote a prompt ` +
+            `for you: "${clip(`${prompt.before || ""}____${prompt.after || ""}`,
+                60)}"`;
+        const writer = db.bulkWriter();
+        for (const uid of uids) {
+          writer.set(notificationRef(db, uid), notification("friendPrompt",
+              text, {from: {username: creator.username || "",
+                photoUrl: creator.photoUrl || ""},
+              promptId: event.params.promptId}));
+        }
+        await writer.close();
+      } catch (e) {
+        console.log(`onFriendPromptCreated: ${event.params.promptId}: ${e}`);
       }
     });
 

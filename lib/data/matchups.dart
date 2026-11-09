@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'posts.dart' show historyRef;
 import 'prompt_day.dart';
 
 // Swipe voting on the Home tab, on the layout in docs/data-model.md
@@ -199,12 +200,46 @@ Future<List<Matchup>> getVotingMatchups(
     FirebaseFirestore firestore, String uid, Set<String> myPostIds,
     {DateTime? now}) async {
   final dayId = promptDayId((now ?? DateTime.now()).toUtc());
-  final matchups = await firestore
+  // Two queries, since the rules let you read a friend prompt's matchups
+  // only if you're in its audience, and a query must say which it wants:
+  // public ones, and friend prompts' ones you're in the audience of.
+  final today = firestore
       .collection('MatchUps')
-      .where('promptDateId', isEqualTo: dayId)
-      .orderBy('createdAt')
-      .limit(matchupPageSize)
-      .get();
+      .where('promptDateId', isEqualTo: dayId);
+  final results = await Future.wait([
+    today
+        .where('scope', isEqualTo: 'public')
+        .orderBy('createdAt')
+        .limit(matchupPageSize)
+        .get(),
+    today
+        .where('audience', arrayContains: uid)
+        .orderBy('createdAt')
+        .limit(matchupPageSize)
+        .get(),
+    // all of today's answers, friend prompts included, so the queue leaves
+    // out matchups with the user's own answers (one read)
+    historyRef(firestore, uid, dayId).get(),
+  ]);
+  final mine = {...myPostIds};
+  final history = (results[2] as DocumentSnapshot<Map<String, dynamic>>)
+          .data()?['answers'] as Map<String, dynamic>? ??
+      const {};
+  for (final e in history.values) {
+    if (e is Map && e['promptDateId'] == dayId && e['postId'] is String) {
+      mine.add(e['postId'] as String);
+    }
+  }
+  final docs = [
+    ...(results[0] as QuerySnapshot<Map<String, dynamic>>).docs,
+    ...(results[1] as QuerySnapshot<Map<String, dynamic>>).docs,
+  ]..sort((a, b) {
+      final ta = a.data()['createdAt'] as Timestamp?;
+      final tb = b.data()['createdAt'] as Timestamp?;
+      if (ta == null || tb == null) return 0;
+      return ta.compareTo(tb);
+    });
+  final matchups = docs;
   // one read per vote today; the vote doc ids are matchupId_uid
   final votes = await firestore
       .collection('Votes')
@@ -214,10 +249,10 @@ Future<List<Matchup>> getVotingMatchups(
   final voted = {for (final v in votes.docs) v.data()['matchupId'] as String?};
 
   return [
-    for (final doc in matchups.docs)
+    for (final doc in matchups)
       if (!voted.contains(doc.id))
         if (Matchup.fromDoc(doc.id, doc.data()) case final m?)
-          if (!m.includesAnyPost(myPostIds)) m,
+          if (!m.includesAnyPost(mine)) m,
   ];
 }
 

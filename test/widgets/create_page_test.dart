@@ -14,6 +14,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:chuckler/data/friend_prompts.dart' show isFriendPrompt;
 import 'package:provider/provider.dart';
 import 'fonts.dart';
 
@@ -509,7 +510,7 @@ void main() {
       expect(sendEnabled(tester), isTrue);
     });
 
-    testWidgets('sending adds the prompt as your own, on this phone only',
+    testWidgets('sending shares the prompt with your friends',
         (tester) async {
       await pumpCreatePage(tester);
       await openBuilder(tester);
@@ -517,24 +518,37 @@ void main() {
       await tester.enterText(builderField(1), 'is a snack');
       await tester.pump();
       await tester.tap(find.text('Send to friends'));
+      await tester.runAsync(
+          () => Future.delayed(const Duration(milliseconds: 50)));
       await tester.pumpAndSettle();
 
+      // after the daily placeholder, before the 3 samples
       expect(create.length, 5);
-      expect(create.page, 4);
+      expect(create.page, 1);
+      expect(isFriendPrompt(create.current!), isTrue);
       expect(promptText('My dog thinks'), findsOneWidget);
       expect(find.text('You'), findsOneWidget);
-      expect(find.text('Not shared yet'), findsOneWidget);
-      expect(find.text('Friends'), findsOneWidget);
-      expect(find.text('1 of 4 answered'), findsOneWidget);
-      expect(find.text('No friends answered'), findsOneWidget);
+      expect(find.text('Not shared yet'), findsNothing);
+      final saved = await tester.runAsync(() => firestore
+          .collection('FriendPrompts')
+          .doc(create.current!.promptId)
+          .get());
+      expect(saved!.data()!['before'], 'My dog thinks ');
+      expect(saved.data()!['creator']['username'], 'caden');
+      expect(saved.data()!.containsKey('audience'), isFalse);
 
-      // answering your own prompt stays local too
+      // answering it is a real post, marked as a friend prompt's
       await tester.enterText(find.byType(TextField), 'a vacuum cleaner');
       await tester.pump();
       await tester.tap(find.text('Post'));
+      await tester.runAsync(
+          () => Future.delayed(const Duration(milliseconds: 50)));
       await tester.pumpAndSettle();
       expect(find.text('YOUR ANSWER'), findsOneWidget);
-      expect((await firestore.collection('Posts').get()).docs, isEmpty);
+      final posts =
+          await tester.runAsync(() => firestore.collection('Posts').get());
+      expect(posts!.docs.single.data()['promptSource'], 'friends');
+      expect(posts.docs.single.data()['promptId'], create.current!.promptId);
     });
 
     testWidgets('only one new prompt a day', (tester) async {

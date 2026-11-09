@@ -90,13 +90,17 @@ class PromptStats {
       mine: mine);
 }
 
+/// The prompt's doc: PromptDays/{day}/Prompts/{id}, or FriendPrompts/{id}
+/// for a friend prompt
 DocumentReference<Map<String, dynamic>> promptRef(
         FirebaseFirestore firestore, DbPrompt prompt) =>
-    firestore
-        .collection('PromptDays')
-        .doc(prompt.promptDateId)
-        .collection('Prompts')
-        .doc(prompt.promptId);
+    isFriendPrompt(prompt)
+        ? friendPromptsRef(firestore).doc(prompt.promptId)
+        : firestore
+            .collection('PromptDays')
+            .doc(prompt.promptDateId)
+            .collection('Prompts')
+            .doc(prompt.promptId);
 
 /// Usernames of the friends who answered a prompt. [friends] maps each
 /// friend's uid to their username. One query per 30 friends (Firestore's
@@ -127,13 +131,6 @@ Future<List<String>> getFriendsWhoAnswered(FirebaseFirestore firestore,
 Future<PromptStats> getPromptStats(FirebaseFirestore firestore, String uid,
     DbPrompt prompt, DbPost? myPost,
     {Map<String, String> friends = const {}}) async {
-  if (isLocalFriendPrompt(prompt)) {
-    // only on this phone, so nobody else has answered or liked it
-    return PromptStats(
-      answers: myPost == null ? 0 : 1,
-      mine: myPost == null ? null : const AnswerStats(),
-    );
-  }
   if (isSamplePrompt(prompt)) {
     return samplePromptStats(prompt, myPost);
   }

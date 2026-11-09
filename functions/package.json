@@ -12,6 +12,7 @@
     "seed": "node scripts/seed.js",
     "seed:answers": "node scripts/seed.js --answers",
     "recount": "node scripts/maintain.js recount",
+    "migrate": "node scripts/maintain.js migrate",
     "finish-day": "node scripts/maintain.js finish-day"
   },
   "engines": {

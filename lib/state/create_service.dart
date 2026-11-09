@@ -2,15 +2,16 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../data/friend_prompts.dart';
 import '../data/prompt_stats.dart';
+import '../data/prompt_day.dart';
 import '../data/prompts.dart';
 import '../data/sample_prompts.dart';
 import '../database/models.dart';
 
 /// The Create tab: which prompt is showing, the user's answer or unsent draft
-/// for each one, and each prompt's stats. Live prompts come from
-/// PromptService; sample prompts and friend prompts the user made on this
-/// phone follow them. Drafts and local answers survive reloads, so leaving
-/// the tab keeps them.
+/// for each one, and each prompt's stats. Live daily prompts come from
+/// PromptService; today's friend prompts (from FriendPrompts) follow them,
+/// then sample prompts in debug builds. Drafts and sample answers survive
+/// reloads, so leaving the tab keeps them.
 class CreateService with ChangeNotifier {
   List<DbPrompt> _prompts = List.empty(growable: true);
   List<DbPost?> _posts = List.empty(growable: true);
@@ -26,13 +27,14 @@ class CreateService with ChangeNotifier {
   final Map<String, bool> _liked = {};
   Map<String, DbPost>? _samplePosts;
 
-  /// friend prompts made on this phone, with the user's answers to them
-  final List<DbPrompt> _created = List.empty(growable: true);
-  final Map<String, DbPost> _createdPosts = {};
+  /// today's friend prompts (the user's own included), with the user's
+  /// answers to them by promptId
+  List<DbPrompt> _friendPrompts = List.empty(growable: true);
+  final Map<String, DbPost> _friendPosts = {};
   final Map<String, PromptCreator> _creators = {};
 
-  /// UTC day of the last friend prompt made, for the one-a-day limit
-  DateTime? _lastCreatedDay;
+  /// prompt day of the user's last friend prompt, for the one-a-day limit
+  String? _lastCreatedDayId;
 
   /// sample prompts are showing, so the streak is sample data too
   bool _usingSamples = false;
@@ -94,48 +96,82 @@ class CreateService with ChangeNotifier {
         photoUrl: p.creatorPhotoUrl ?? '');
   }
 
-  /// One new friend prompt a day
+  /// One new friend prompt per prompt day
   bool canCreatePrompt(DateTime nowUtc) =>
-      _lastCreatedDay == null ||
-      _lastCreatedDay != DateTime.utc(nowUtc.year, nowUtc.month, nowUtc.day);
+      _lastCreatedDayId != promptDayId(nowUtc);
 
   /// Adds a friend prompt the user just made, shows it, and returns its page
   int addCreatedPrompt(DbPrompt prompt, PromptCreator creator, DateTime nowUtc) {
-    _created.add(prompt);
     _creators[_key(prompt)] = creator;
-    _lastCreatedDay = DateTime.utc(nowUtc.year, nowUtc.month, nowUtc.day);
-    _prompts.add(prompt);
-    _posts.add(null);
-    _page = _prompts.length - 1;
+    _lastCreatedDayId = promptDayId(nowUtc);
+    if (!_friendPrompts.any((p) => _key(p) == _key(prompt))) {
+      _friendPrompts.add(prompt);
+    }
+    // where a reload would put it: after the daily prompts, before samples
+    _rebuild();
+    _page = _prompts.indexWhere((p) => _key(p) == _key(prompt));
     notifyListeners();
     return _page;
   }
 
-  /// Shows the live prompts, followed by the sample prompts when
-  /// includeSamples is set. livePosts[i] is the user's answer to live[i].
+  /// Sets today's friend prompts and the user's answers to them (promptId
+  /// to post). Their own prompt today uses up the one-a-day limit.
+  void setFriendPrompts(List<DbPrompt> prompts, Map<String, DbPost> myAnswers,
+      {required String uid, required DateTime nowUtc}) {
+    final today = promptDayId(nowUtc);
+    _friendPrompts = [...prompts];
+    _friendPosts
+      ..clear()
+      ..addAll(myAnswers);
+    if (prompts.any((p) => p.creatorUid == uid && p.promptDateId == today)) {
+      _lastCreatedDayId = today;
+    }
+    final current = _page < _prompts.length ? _key(_prompts[_page]) : null;
+    _rebuild();
+    final keep = _prompts.indexWhere((p) => _key(p) == current);
+    _page = keep >= 0 ? keep : 0;
+    notifyListeners();
+  }
+
+  List<DbPrompt> _live = const [];
+  List<DbPost?> _livePosts = const [];
+  bool _includeSamples = false;
+
+  /// Shows the live prompts, then today's friend prompts, then the sample
+  /// prompts when includeSamples is set. livePosts[i] is the user's answer
+  /// to live[i].
   void setPrompts(List<DbPrompt> live, List<DbPost?> livePosts,
       {bool includeSamples = false, String uid = '', String username = ''}) {
     _usingSamples = includeSamples;
-    _prompts = [...live];
-    _posts = [
-      for (int i = 0; i < live.length; i++)
-        i < livePosts.length ? livePosts[i] : null
-    ];
+    _live = [...live];
+    _livePosts = [...livePosts];
+    _includeSamples = includeSamples;
     if (includeSamples) {
       _samplePosts ??= sampleAnsweredPosts(uid, username);
+    }
+    _rebuild();
+    if (_page >= _prompts.length) {
+      _page = 0;
+    }
+    notifyListeners();
+  }
+
+  void _rebuild() {
+    _prompts = [..._live];
+    _posts = [
+      for (int i = 0; i < _live.length; i++)
+        i < _livePosts.length ? _livePosts[i] : null
+    ];
+    for (DbPrompt p in _friendPrompts) {
+      _prompts.add(p);
+      _posts.add(_friendPosts[p.promptId]);
+    }
+    if (_includeSamples) {
       for (DbPrompt p in samplePrompts()) {
         _prompts.add(p);
         _posts.add(_samplePosts![p.promptId]);
       }
     }
-    for (DbPrompt p in _created) {
-      _prompts.add(p);
-      _posts.add(_createdPosts[p.promptId]);
-    }
-    if (_page >= _prompts.length) {
-      _page = 0;
-    }
-    notifyListeners();
   }
 
   void setPage(int i) {
@@ -155,8 +191,8 @@ class CreateService with ChangeNotifier {
     _drafts.remove(_key(_prompts[i]));
     if (isSamplePrompt(_prompts[i])) {
       _samplePosts![_prompts[i].promptId!] = post;
-    } else if (isLocalFriendPrompt(_prompts[i])) {
-      _createdPosts[_prompts[i].promptId!] = post;
+    } else if (isFriendPrompt(_prompts[i])) {
+      _friendPosts[_prompts[i].promptId!] = post;
     }
     notifyListeners();
   }
@@ -215,10 +251,13 @@ class CreateService with ChangeNotifier {
     _friends = const {};
     _liked.clear();
     _samplePosts = null;
-    _created.clear();
-    _createdPosts.clear();
+    _friendPrompts = List.empty(growable: true);
+    _friendPosts.clear();
     _creators.clear();
-    _lastCreatedDay = null;
+    _lastCreatedDayId = null;
+    _live = const [];
+    _livePosts = const [];
+    _includeSamples = false;
     _usingSamples = false;
     notifyListeners();
   }

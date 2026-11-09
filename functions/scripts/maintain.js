@@ -7,6 +7,10 @@
 //     author's History, and a results notification each. The emulator
 //     doesn't run schedules, so this stands in for it.
 //
+//   migrate
+//     Gives matchups from before scopes existed scope "public", so the Home
+//     tab's public query finds them.
+//
 //   recount
 //     Recomputes every user's stats (answers, wins, comments, friends) and
 //     streak from the data, and awards any tiers they qualify for. Use it
@@ -95,11 +99,30 @@ async function recount() {
   }
 }
 
+/**
+ * Gives matchups made before scopes existed scope "public", so the Home
+ * tab's public query (scope == "public") finds them.
+ */
+async function migrate() {
+  const matchups = await db.collection("MatchUps").get();
+  const writer = db.bulkWriter();
+  let n = 0;
+  for (const m of matchups.docs) {
+    if (m.data().scope) continue;
+    writer.update(m.ref, {scope: "public"});
+    n++;
+  }
+  await writer.close();
+  console.log(`migrate: ${n} matchups given scope "public"`);
+}
+
 /** Runs the command named on the command line. */
 async function main() {
   const [command, ...args] = process.argv.slice(2);
   if (command === "recount") {
     await recount();
+  } else if (command === "migrate") {
+    await migrate();
   } else if (command === "finish-day") {
     const dayId = args.find((a) => !a.startsWith("--")) ||
         addDays(promptDayId(new Date()), -1);
@@ -107,7 +130,8 @@ async function main() {
         {force: args.includes("--force")});
     console.log(`finish-day ${dayId}: ${JSON.stringify(result)}`);
   } else {
-    console.error("usage: maintain.js recount | finish-day [day] [--force]");
+    console.error("usage: maintain.js recount | migrate | " +
+        "finish-day [day] [--force]");
     process.exit(1);
   }
 }

@@ -53,6 +53,60 @@ service cloud.firestore {
       }
     }
 
+    // ---- Friend prompts ------------------------------------------------
+
+    // Today's prompt day id (yyyy-MM-dd), which rolls over at 05:00 UTC
+    // like lib/data/prompt_day.dart
+    function isToday(dayId) {
+      let d = request.time - duration.value(5, 'h');
+      return dayId is string && dayId.size() == 10
+          && int(dayId[0:4]) == d.year()
+          && int(dayId[5:7]) == d.month()
+          && int(dayId[8:10]) == d.day();
+    }
+
+    function promptPart(s) {
+      return s is string && s.size() <= 120;
+    }
+
+    // A prompt a user writes for their friends, one per user per day: the
+    // id is {uid}_{dayId} and docs are never rewritten. The creator writes
+    // it without an audience; onFriendPromptCreated fills that in from
+    // their Friends, since rules can't check a list of friends.
+    match /FriendPrompts/{promptId} {
+      allow read: if signedIn()
+          && (request.auth.uid in resource.data.get('audience', [])
+              || resource.data.creator.uid == request.auth.uid);
+      allow create: if signedIn() && isNewFriendPrompt(promptId);
+      allow update: if signedIn()
+          && request.auth.uid in resource.data.get('audience', [])
+          && isLikeToggle();
+      allow delete: if false;
+    }
+
+    function isNewFriendPrompt(promptId) {
+      let d = request.resource.data;
+      let me = request.auth.uid;
+      let c = d.get('counts', {});
+      return d.keys().hasOnly(['before', 'after', 'kind', 'dayId', 'createdAt',
+              'creator', 'status', 'counts', 'likedBy'])
+          && promptId == me + '_' + d.dayId
+          && isToday(d.dayId)
+          && promptPart(d.before) && promptPart(d.after)
+          && d.before.size() + d.after.size() > 0
+          && d.kind == 'fill'
+          && d.status == 'active'
+          && d.createdAt == request.time
+          && d.creator.keys().hasOnly(['uid', 'username', 'photoUrl'])
+          && d.creator.uid == me
+          && d.creator.username == get(/databases/$(database)/documents/Users/$(me)).data.username
+          && d.creator.get('photoUrl', '') is string
+          && c is map && c.keys().hasOnly(['answers', 'likes', 'dislikes'])
+          && c.get('answers', 0) == 0 && c.get('likes', 0) == 0
+          && c.get('dislikes', 0) == 0
+          && d.get('likedBy', []) == [];
+    }
+
     // ---- Usernames -----------------------------------------------------
 
     // One doc per name, so names are unique. Claim a free name for yourself;
@@ -184,6 +238,15 @@ service cloud.firestore {
       return m.get(key, 0) == 0;
     }
 
+    // An answer to a friend prompt: you're in its audience, and the answer
+    // belongs to the prompt's day
+    function canAnswerFriendPrompt() {
+      let d = request.resource.data;
+      let p = get(/databases/$(database)/documents/FriendPrompts/$(d.promptId)).data;
+      return request.auth.uid in p.get('audience', [])
+          && d.promptDateId == p.dayId;
+    }
+
     function zeroCounts() {
       let d = request.resource.data;
       let c = d.get('counts', {});
@@ -213,7 +276,9 @@ service cloud.firestore {
     match /Posts/{postId} {
       // Legacy: the feed reads everyone's posts. Friends-only later.
       allow read: if signedIn();
-      allow create: if isUser(request.resource.data.uid) && zeroCounts();
+      allow create: if isUser(request.resource.data.uid) && zeroCounts()
+          && (request.resource.data.get('promptSource', 'daily') != 'friends'
+              || canAnswerFriendPrompt());
       // Legacy voting bumps likes/wins from the client; counts and the
       // author belong to the server, apart from an anonymous dislike.
       allow update: if signedIn()
@@ -258,8 +323,13 @@ service cloud.firestore {
 
     // Matchups are anonymous and written only by Cloud Functions.
     // Private/owners (the authors' uids) has no rule, so clients can't read it.
+    // Matchups for friend prompts (scope "friends") are only for the
+    // prompt's audience. Queries must say so: Home asks for scope ==
+    // "public", or for audience array-contains the user.
     match /MatchUps/{matchupId} {
-      allow read: if signedIn();
+      allow read: if signedIn()
+          && (resource.data.scope == 'public'
+              || request.auth.uid in resource.data.audience);
 
       // Who wrote each answer, revealed once you've voted on the matchup
       match /Authors/{doc} {
@@ -287,6 +357,8 @@ service cloud.firestore {
           && v.type in ['win', 'dislike']
           && v.promptDateId == m.promptDateId
           && !(request.auth.uid in owners.uids)
+          && (m.get('scope', 'public') != 'friends'
+              || request.auth.uid in m.get('audience', []))
           && (v.type == 'win' || existsAfter(
               /databases/$(database)/documents/Dislikes/$(m.postIds[v.card] + '_' + request.auth.uid)));
     }

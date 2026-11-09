@@ -152,6 +152,7 @@ class NotificationRow extends StatelessWidget {
     'award': Icons.emoji_events,
     'comment': Icons.chat_bubble,
     'results': Icons.bar_chart,
+    'friendPrompt': Icons.edit_note,
   };
 
   @override

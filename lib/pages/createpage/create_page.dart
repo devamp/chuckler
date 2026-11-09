@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../../Theme/theme.dart';
 import '../../data/friend_prompts.dart';
 import '../../data/posts.dart';
+import '../../data/prompt_day.dart';
 import '../../data/prompt_stats.dart';
 import '../../data/prompts.dart';
 import '../../data/users.dart';
@@ -84,7 +85,40 @@ class _CreatePageState extends State<CreatePage> {
         includeSamples: includeSamples,
         uid: user?.uid ?? '',
         username: user?.username ?? '');
-    _loadStatsWithFriends(createService, user);
+    _loadFriendPromptsAndStats(createService, user);
+  }
+
+  /// Today's friend prompts and the user's answers to them, then every
+  /// prompt's stats
+  Future<void> _loadFriendPromptsAndStats(
+      CreateService createService, DbUser? user) async {
+    FirebaseFirestore firestore =
+        Provider.of<FirebaseFirestore>(context, listen: false);
+    final uid = user?.uid ?? '';
+    if (user != null && uid.isNotEmpty) {
+      final now = DateTime.now().toUtc();
+      final dayId = promptDayId(now);
+      try {
+        final results = await Future.wait([
+          getFriendPrompts(firestore, uid, dayId),
+          getMyAnswersForDay(firestore, user, dayId),
+        ]);
+        if (!mounted) return;
+        createService.setFriendPrompts(results[0] as List<DbPrompt>,
+            results[1] as Map<String, DbPost>,
+            uid: uid, nowUtc: now);
+        if (createService.length > 0) {
+          _answer.text = createService.draftFor(createService.page);
+          if (_pages.hasClients && _pages.page?.round() != createService.page) {
+            _pages.jumpToPage(createService.page);
+          }
+        }
+      } catch (e) {
+        debugPrint('friend prompts: $e');
+      }
+    }
+    if (!mounted) return;
+    await _loadStatsWithFriends(createService, user);
   }
 
   /// Loads the user's friends first (once per session), so the stats can
@@ -225,8 +259,21 @@ class _CreatePageState extends State<CreatePage> {
     final parts = await showPromptBuilder(context);
     if (parts == null || !mounted) return;
     _answerFocus.unfocus();
-    DbPrompt prompt =
-        await createFriendPrompt(firestore, user, parts.$1, parts.$2);
+    DbPrompt prompt;
+    try {
+      prompt = await createFriendPrompt(
+          firestore, user, parts.$1, parts.$2, promptDayId(now));
+    } catch (e) {
+      // the rules allow one a day, so this is usually a second one
+      debugPrint('friend prompt: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text("Couldn't share your prompt. You can make one a "
+                "day.")));
+      }
+      return;
+    }
+    if (!mounted) return;
     int page = createService.addCreatedPrompt(
         prompt,
         PromptCreator(
