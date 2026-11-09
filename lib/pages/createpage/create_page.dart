@@ -169,16 +169,24 @@ class _CreatePageState extends State<CreatePage> {
     }
   }
 
-  void like(CreateService createService, int i) {
+  Future<void> like(CreateService createService, int i) async {
     bool liked = createService.toggleLike(i);
     DbPrompt prompt = createService.prompts[i];
     if (isLocalPrompt(prompt)) return;
-    likePrompt(
-        Provider.of<FirebaseFirestore>(context, listen: false),
+    FirebaseFirestore firestore =
+        Provider.of<FirebaseFirestore>(context, listen: false);
+    String uid =
         Provider.of<SessionService>(context, listen: false).loggedInUser?.uid ??
-            '',
-        prompt,
-        liked);
+            '';
+    try {
+      await likePrompt(firestore, uid, prompt, liked);
+    } catch (e) {
+      // the rules refuse a like that doesn't change anything, e.g. when the
+      // phone's idea of it was stale: show what Firestore actually has
+      debugPrint("$e");
+      createService.clearLike(i);
+      await createService.loadStats(firestore, uid, only: i);
+    }
   }
 
   Future<void> createPrompt(CreateService createService) async {

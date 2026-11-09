@@ -71,6 +71,12 @@ class CreateService with ChangeNotifier {
     return liked;
   }
 
+  /// Forgets the phone's change to prompt i's like, so its stats decide
+  void clearLike(int i) {
+    _liked.remove(_key(_prompts[i]));
+    notifyListeners();
+  }
+
   String _key(DbPrompt p) => '${p.promptDateId}/${p.promptId}';
 
   /// Who made prompt i. Live daily prompts come from the Chuckler account.

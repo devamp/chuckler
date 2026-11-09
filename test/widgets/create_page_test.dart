@@ -305,6 +305,18 @@ void main() {
       expect(find.text('1 of 2 answered'), findsOneWidget);
     });
 
+    testWidgets('a refused like falls back to what Firestore has',
+        (tester) async {
+      await pumpCreatePage(tester, live: live);
+      // no prompt doc exists, so the update fails like a rules refusal would
+      await tester.tap(find.byTooltip('Like this prompt'));
+      await tester.pumpAndSettle();
+
+      expect(create.likedFor(0), isFalse);
+      expect(find.byTooltip('Like this prompt'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('swiping puts the keyboard away', (tester) async {
       await pumpCreatePage(tester, live: live);
       await tester.showKeyboard(find.byType(TextField));
