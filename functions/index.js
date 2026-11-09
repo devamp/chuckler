@@ -1,7 +1,7 @@
 const {getFirestore, FieldValue} = require("firebase-admin/firestore");
-// eslint-disable-next-line no-unused-vars
 const {onDocumentCreated} = require("firebase-functions/v2/firestore");
 const {initializeApp} = require("firebase-admin/app");
+const {isDayId, markStreakDay} = require("./promptDay");
 initializeApp();
 const db = getFirestore();
 
@@ -51,20 +51,39 @@ exports.createMatchup = onDocumentCreated("Posts/{docid}", async (event) => {
   }
 });
 
-// Increments a prompt when a user posts
-exports.incrementPrompt = onDocumentCreated("Posts/{docid}", async (event) => {
-  const eData = event.data.data();
-  try {
-    // Find a post that does not have a match up
+// onPostCreated keeps the server-side counts for a new answer:
+// - the prompt's counts.answers
+// - the author's FriendView/profile: stats.answers and the answer streak.
+// The streak day is the post's promptDateId, not the server clock.
+exports.onPostCreated = onDocumentCreated("Posts/{postId}", async (event) => {
+  const post = event.data.data();
+  const {uid, promptId, promptDateId} = post;
+  if (!uid || !promptId || !isDayId(promptDateId)) {
+    console.log(`onPostCreated: skipping ${event.params.postId}, ` +
+        `missing uid/promptId/promptDateId`);
+    return;
+  }
 
-    const prompt= await db.collection("PromptDays")
-        .doc(eData.promptDateId)
-        .collection("Prompts")
-        .doc(eData.promptId).get();
-    await prompt.ref.update({
-      "responses": FieldValue.increment(1),
+  try {
+    await db.collection("PromptDays").doc(promptDateId)
+        .collection("Prompts").doc(promptId)
+        .update({"counts.answers": FieldValue.increment(1)});
+  } catch (e) {
+    console.log(`onPostCreated: prompt ${promptDateId}/${promptId}: ${e}`);
+  }
+
+  try {
+    const profileRef = db.collection("Users").doc(uid)
+        .collection("FriendView").doc("profile");
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(profileRef);
+      const profile = snap.exists ? snap.data() : {};
+      const update = {stats: {answers: FieldValue.increment(1)}};
+      const streak = markStreakDay(profile.streak, promptDateId);
+      if (streak) update.streak = streak;
+      tx.set(profileRef, update, {merge: true});
     });
   } catch (e) {
-    console.log(e);
+    console.log(`onPostCreated: profile ${uid}: ${e}`);
   }
 });

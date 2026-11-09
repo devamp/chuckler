@@ -26,16 +26,22 @@ flutter run --dart-define=USE_EMULATOR=true --dart-define=EMULATOR_HOST=192.168.
 flutter run
 ```
 
-Firebase emulators (auth 9099, firestore 8080, functions 5001, storage 9199, UI enabled). Seed data is in `fb_em_data/`:
+Firebase emulators (auth 9099, firestore 8080, functions 5001, storage 9199, UI enabled). Seed data is in `fb_em_data/`: the Chuckler account, test accounts `ava`/`ben`/`cleo` `@chuckler.test` (password in `functions/scripts/seed.js`), and prompt days around the day it was made:
 
 ```bash
 firebase emulators:start --import=fb_em_data [--export-on-exit=fb_em_data]
+
+# Refresh the seed when its prompt days have passed (emulators running):
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 npm --prefix functions run seed
+firebase emulators:export fb_em_data
 ```
 
-Cloud Functions (`functions/`, Node 18, ESLint google config; lint runs as a predeploy step):
+Cloud Functions (`functions/`, Node 20, ESLint google config; lint runs as a predeploy step). `firebase-functions` is pinned to 5.0.1 because the installed Firebase CLI (13.15) rejects the build spec of 5.1+ ("Unexpected key extensions"); upgrade the CLI before upgrading the SDK.
 
 ```bash
 cd functions && npm install && npm run lint
+# Rules tests (functions/test/rules.test.js) against the Firestore emulator:
+firebase emulators:exec --only firestore "npm --prefix functions test"
 npm run deploy        # firebase deploy --only functions
 ```
 
@@ -68,10 +74,10 @@ Tests run without Firebase: `test/data/` covers the query functions against `fak
 
 **Server-side logic (`functions/index.js`)**: Firestore triggers on `Posts/{docid}` creation:
 - `createMatchup` pairs the new post with the oldest unmatched post for the same `promptId` + `promptDateId` and writes a `MatchUps` doc, or marks the post `matched: false`.
-- `incrementPrompt` bumps the response count on the matching `PromptDays` prompt.
+- `onPostCreated` bumps the prompt's `counts.answers` and, in a transaction, the author's `FriendView/profile` `stats.answers` and streak string (`functions/promptDay.js`, the JS twin of `lib/data/prompt_day.dart`).
 Matchups exist only because of these triggers. The app itself does not read `MatchUps` yet: the feed is built from `Posts` via `getPosts`.
 
-**Rules/config**: `firestore.rules`, `storage.rules`, `firestore.indexes.json`, all wired up in `firebase.json`.
+**Rules/config**: `firestore.rules`, `storage.rules`, `firestore.indexes.json`, all wired up in `firebase.json`. `firestore.rules` has explicit rules for the slice-1 collections (prompts and likes, usernames, FriendView, Private, History, new posts) and leaves the legacy collections open to signed-in users; anything else is denied.
 
 **UI conventions**: shared widgets live in `lib/CustomReusableWidgets/`. The theme is in `lib/Theme/theme.dart` (dark theme only), with custom fonts OpenSans, Livvic and NewAmsterdam. Shared copy is in `lib/pages/constant_strings.dart`.
 
@@ -93,13 +99,13 @@ Planned features and design decisions (prompt types, Create-tab swiping, Home sw
 
 - Deployed functions don't match the repo (checked 2026-11-08 with `firebase functions:list`). Production has only `checkUsername`, a v1 callable on Node 18 whose source was never committed. `createMatchup` and `incrementPrompt` have never been deployed, so production posts get no matchups and no response counts. The app doesn't call `checkUsername`; signup claims `Usernames/{name}` in a transaction instead.
 - `createMatchup` queries Posts on `promptId`, `promptDateId`, `matched` and orders by `date`. No composite index covers that, so it would fail in production; the emulator doesn't enforce indexes. The `random` index on Posts is unused by the app. Deployed indexes match `firestore.indexes.json`.
-- Cloud Functions run on Node 18, which Google has retired. Move to Node 20+ before any deploy.
+- The repo's functions are on Node 20, but the deployed `checkUsername` is still Node 18.
 - All iOS plugins are Swift packages now, but `ios/` still has CocoaPods integration (`Podfile`, `Pods/`, includes in `Flutter/Debug.xcconfig` and `Release.xcconfig`). Flutter warns about it on every build; it is harmless but slows builds.
 - Logout (`lib/pages/accountpage/settings.dart`) navigates to `'/login'`, which is not a defined route, so the default route builds a second `MyApp` inside the first.
 - Logout clears only prompts and the user's posts; `SessionService` and `FeedService` keep the previous user's state.
 - More suspected bugs are recorded as `TODO(bug)` in `test/data/` and `test/state/`.
-- Firestore rules are intentionally open to any signed-in user while the live database holds only test accounts. Tighten them before real users arrive or before moving to the Blaze plan.
+- The repo's Firestore rules are explicit for slice 1 but still let any signed-in user edit other users' `Users` docs and posts (legacy friend requests and voting need it); tighten them in the friends and voting slices. Production still runs the old open rules: nothing has been deployed.
 - Storage rules deny everything.
 - The bundle ID is still `com.example.chuckler`. It needs a permanent ID registered in Firebase.
-- `fb_em_data/` is committed and contains emulator accounts with real emails.
+- `fb_em_data/` now holds only `@chuckler.test` accounts, but older commits still contain an export with real emails.
 - Simulator.app is missing from this Xcode 27 install, so test on a real iPhone.

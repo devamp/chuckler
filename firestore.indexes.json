@@ -5,6 +5,28 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
+          "fieldPath": "promptId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "promptDateId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "matched",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "date",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "Posts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
           "fieldPath": "promptDateId",
           "order": "ASCENDING"
         },

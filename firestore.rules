@@ -1,8 +1,146 @@
 rules_version = '2';
+
+// Slice 1 rules (see docs/data-model.md). The legacy collections (Comments,
+// Notifications, MatchUps and the legacy Users fields) stay open to any
+// signed-in user until their slices replace them. Anything not matched here
+// is denied. Tested by functions/test/rules.test.js.
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isUser(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    // Only these keys changed between the stored doc and the write.
+    function onlyChanged(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+
+    // ---- Prompts -------------------------------------------------------
+
+    // A like or unlike: the writer adds (or removes) only their own uid in
+    // likedBy, and counts.likes moves by exactly 1 to match. Nothing else
+    // on the prompt changes.
+    function isLikeToggle() {
+      let me = request.auth.uid;
+      let before = resource.data.get('likedBy', []);
+      let after = request.resource.data.get('likedBy', []);
+      let likesBefore = resource.data.get('counts', {}).get('likes', 0);
+      let likesAfter = request.resource.data.get('counts', {}).get('likes', 0);
+      let countsOnlyLikes = request.resource.data.get('counts', {})
+          .diff(resource.data.get('counts', {})).affectedKeys().hasOnly(['likes']);
+      let like = !(me in before)
+          && after.size() == before.size() + 1
+          && after.toSet() == before.toSet().union([me].toSet())
+          && likesAfter == likesBefore + 1;
+      let unlike = (me in before)
+          && after.size() == before.size() - 1
+          && after.toSet() == before.toSet().difference([me].toSet())
+          && likesAfter == likesBefore - 1;
+      return onlyChanged(['likedBy', 'counts']) && countsOnlyLikes && (like || unlike);
+    }
+
+    match /PromptDays/{dayId} {
+      allow read: if signedIn();
+
+      match /Prompts/{promptId} {
+        allow read: if signedIn();
+        allow update: if signedIn() && isLikeToggle();
+      }
+    }
+
+    // ---- Usernames -----------------------------------------------------
+
+    // One doc per name, so names are unique. Claim a free name for yourself;
+    // never change a claim; release only your own.
+    match /Usernames/{name} {
+      allow read: if signedIn();
+      allow create: if isUser(request.resource.data.uid)
+          && request.resource.data.keys().hasOnly(['uid']);
+      allow update: if false;
+      allow delete: if isUser(resource.data.uid);
+    }
+
+    // ---- Users ---------------------------------------------------------
+
+    match /Users/{uid} {
+      allow read: if signedIn();
+      // Legacy: friend requests write other users' docs. Tighten in the
+      // friends slice. Official accounts are written only by the server.
+      allow create, update, delete: if signedIn() && uid != 'chuckler';
+
+      // bio, stats, streak: kept by Cloud Functions. Friends get read
+      // access in the friends slice. The one client write is signup
+      // (registerNewUser) creating the profile empty: no bio text, zero
+      // answers, no streak.
+      match /FriendView/{doc} {
+        allow read: if isUser(uid);
+        allow create: if isUser(uid) && doc == 'profile'
+            && request.resource.data.keys().hasOnly(['bio', 'stats'])
+            && request.resource.data.get('bio', '') == ''
+            && request.resource.data.get('stats', {}).keys().hasOnly(['answers'])
+            && request.resource.data.get('stats', {}).get('answers', 0) == 0;
+        allow update, delete: if false;
+      }
+
+      match /Private/{doc} {
+        allow read, write: if isUser(uid);
+      }
+
+      // A month of the user's answers. Only the owner adds to it.
+      match /History/{month} {
+        allow read, create, update: if isUser(uid);
+        allow delete: if false;
+      }
+    }
+
+    // ---- Posts (answers) -----------------------------------------------
+
+    // Every counter a new post may carry must start at 0.
+    function isZero(m, key) {
+      return m.get(key, 0) == 0;
+    }
+
+    function zeroCounts() {
+      let d = request.resource.data;
+      let c = d.get('counts', {});
+      return c is map
+          && c.keys().hasOnly(['matchups', 'votes', 'wins', 'dislikes', 'likes', 'comments'])
+          && isZero(c, 'matchups') && isZero(c, 'votes') && isZero(c, 'wins')
+          && isZero(c, 'dislikes') && isZero(c, 'likes') && isZero(c, 'comments')
+          // legacy counters
+          && isZero(d, 'likes') && isZero(d, 'dislikes') && isZero(d, 'wins')
+          && d.get('likedBy', []).size() == 0;
+    }
+
+    match /Posts/{postId} {
+      // Legacy: the feed reads everyone's posts. Friends-only later.
+      allow read: if signedIn();
+      allow create: if isUser(request.resource.data.uid) && zeroCounts();
+      // Legacy voting bumps likes/wins from the client; counts and the
+      // author belong to the server.
+      allow update: if signedIn()
+          && !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['counts', 'uid']);
+      allow delete: if isUser(resource.data.uid);
+    }
+
+    // ---- Legacy collections, open to signed-in users ---------------------
+
+    match /Comments/{document=**} {
+      allow read, write: if signedIn();
+    }
+
+    match /Notifications/{document=**} {
+      allow read, write: if signedIn();
+    }
+
+    match /MatchUps/{document=**} {
+      allow read, write: if signedIn();
     }
   }
 }
