@@ -47,7 +47,7 @@ firebase emulators:exec --only firestore "npm --prefix functions test"
 npm run deploy        # firebase deploy --only functions
 ```
 
-Emulator mode is opt-in only, through `USE_EMULATOR`. Never hardcode emulator calls into `lib/main.dart`. Builds without the flag must hit production.
+Emulator mode is opt-in only, through `USE_EMULATOR`. Never hardcode emulator calls into `lib/main.dart`. Builds without the flag must hit production. In emulator mode the Firestore offline cache is off, since emulator data is reset often and a cached copy from an earlier run shows stale data.
 
 Tests run without Firebase: `test/data/` covers the query functions against `fake_cloud_firestore` (shared fixtures in `test/data/helpers.dart`), and `test/state/` covers the ChangeNotifier services. They are characterization tests: they describe current behavior, and suspected bugs are matched as-is and marked `TODO(bug)` rather than fixed. `test/widgets/` renders individual screens with fake services at iPhone sizes (`test/widgets/fonts.dart` loads the real fonts for overflow checks); `MyApp` itself is not tested, because it needs Firebase and Isar to start.
 

@@ -81,6 +81,13 @@ class PromptStats {
     this.friendsAnswered = const [],
     this.mine,
   });
+
+  PromptStats withAnswers(int n) => PromptStats(
+      answers: n,
+      likes: likes,
+      likedByMe: likedByMe,
+      friendsAnswered: friendsAnswered,
+      mine: mine);
 }
 
 DocumentReference<Map<String, dynamic>> promptRef(

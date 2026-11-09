@@ -35,6 +35,11 @@ Future<void> main() async {
     //   --dart-define=EMULATOR_HOST=192.168.1.x
     // Builds without the flag (including release) use production Firebase.
     if (useEmulator) {
+      // No offline cache against the emulators: their data is reset often,
+      // and a cached copy from an earlier run (served while the app is still
+      // reconnecting) shows stale counts. Production keeps the cache.
+      FirebaseFirestore.instance.settings =
+          const Settings(persistenceEnabled: false);
       FirebaseFirestore.instance.useFirestoreEmulator(emulatorHost, 8080);
       FirebaseStorage.instance.useStorageEmulator(emulatorHost, 9199);
       FirebaseFunctions.instance.useFunctionsEmulator(emulatorHost, 5001);

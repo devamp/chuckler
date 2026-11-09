@@ -158,21 +158,39 @@ class CreateService with ChangeNotifier {
     notifyListeners();
   }
 
-  /// Fetches stats for every answerable prompt, or only for prompt [only]
+  /// Fetches stats for every answerable prompt, or only for prompt [only].
+  /// After the user posts to [only], pass [justAnswered]: the server counts
+  /// the new answer a moment later, so until it shows up the count is the
+  /// previous one plus the user's.
   Future<void> loadStats(FirebaseFirestore firestore, String uid,
-      {int? only}) async {
+      {int? only, bool justAnswered = false}) async {
     final prompts = _prompts;
     for (int i = 0; i < prompts.length; i++) {
       if ((only != null && i != only) || isAwaitingPrompt(prompts[i])) {
         continue;
       }
-      final stats = await getPromptStats(firestore, uid, prompts[i], postFor(i));
-      _stats[_key(prompts[i])] = stats;
+      final key = _key(prompts[i]);
+      final before = _stats[key]?.answers;
+      try {
+        var stats =
+            await getPromptStats(firestore, uid, prompts[i], postFor(i));
+        if (justAnswered && before != null && stats.answers <= before) {
+          stats = stats.withAnswers(before + 1);
+        }
+        _stats[key] = stats;
+      } catch (e) {
+        // keep what was there; one bad prompt shouldn't blank the others
+        debugPrint('stats for ${prompts[i].promptId}: $e');
+      }
     }
     if (only == null) {
-      _streak = _usingSamples
-          ? sampleStreak
-          : await getAnswerStreak(firestore, uid);
+      try {
+        _streak = _usingSamples
+            ? sampleStreak
+            : await getAnswerStreak(firestore, uid);
+      } catch (e) {
+        debugPrint('streak: $e');
+      }
     }
     notifyListeners();
   }

@@ -128,4 +128,38 @@ void main() {
     s.setPrompts([awaitingPrompt()], [null], includeSamples: true);
     expect(s.draftFor(1), '');
   });
+
+  group('answer count after posting', () {
+    late FakeFirebaseFirestore firestore;
+    final prompt = DbPrompt('before ', '', '2026-11-08', 'p1', null, null);
+
+    setUp(() async {
+      firestore = FakeFirebaseFirestore();
+      await firestore.doc('PromptDays/2026-11-08/Prompts/p1').set({
+        'counts': {'answers': 8, 'likes': 0},
+      });
+      s.setPrompts([prompt], [null]);
+      await s.loadStats(firestore, 'me');
+    });
+
+    test('counts the user\'s answer before the server does', () async {
+      s.markPosted(0, aPost('p1', 'hi'));
+      await s.loadStats(firestore, 'me', only: 0, justAnswered: true);
+      expect(s.statsFor(0)!.answers, 9);
+    });
+
+    test('uses the server count once it has caught up', () async {
+      await firestore
+          .doc('PromptDays/2026-11-08/Prompts/p1')
+          .update({'counts.answers': 10});
+      s.markPosted(0, aPost('p1', 'hi'));
+      await s.loadStats(firestore, 'me', only: 0, justAnswered: true);
+      expect(s.statsFor(0)!.answers, 10);
+    });
+
+    test('a plain reload shows the server count', () async {
+      await s.loadStats(firestore, 'me', only: 0);
+      expect(s.statsFor(0)!.answers, 8);
+    });
+  });
 }

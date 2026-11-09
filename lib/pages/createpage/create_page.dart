@@ -136,7 +136,8 @@ class _CreatePageState extends State<CreatePage> {
       }
       createService.markPosted(i, posted);
       _answer.clear();
-      await createService.loadStats(firestore, user.uid ?? '', only: i);
+      await createService.loadStats(firestore, user.uid ?? '',
+          only: i, justAnswered: !isLocalPrompt(prompt));
     } catch (e) {
       debugPrint("$e");
       if (mounted) {
