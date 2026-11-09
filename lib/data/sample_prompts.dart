@@ -1,4 +1,5 @@
 import '../database/models.dart';
+import 'friend_prompts.dart';
 import 'prompt_stats.dart';
 
 // Example prompts and stats for building the Create tab before the stats
@@ -113,4 +114,13 @@ StreakHistory sampleStreakHistory(DateTime nowUtc, String username) {
       const FriendStreak('priya', 0),
     ],
   );
+}
+
+/// Who made each sample prompt: the friends one comes from a friend, the
+/// rest from the Chuckler account
+PromptCreator sampleCreator(DbPrompt prompt) {
+  if (prompt.promptId == 'sample-date') {
+    return const PromptCreator(uid: 'sample-ava', username: 'ava');
+  }
+  return chuckler;
 }

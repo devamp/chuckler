@@ -1,5 +1,6 @@
 // Tests for the Create tab's stats helpers and sample data.
 
+import 'package:chuckler/data/friend_prompts.dart';
 import 'package:chuckler/data/matchups.dart';
 import 'package:chuckler/data/prompt_stats.dart';
 import 'package:chuckler/data/sample_prompts.dart';
@@ -67,5 +68,15 @@ void main() {
     expect(h.myPlace, 4);
     expect(h.standings[h.myPlace - 1].username, 'caden');
     expect(const StreakHistory().myPlace, 0);
+  });
+
+  test('normalizePromptParts spaces the blank but keeps punctuation close',
+      () {
+    expect(normalizePromptParts('  My dog thinks ', ' is a snack '),
+        ('My dog thinks ', ' is a snack'));
+    expect(normalizePromptParts('I love', '!'), ('I love ', '!'));
+    expect(normalizePromptParts('', 'is my spirit animal'),
+        ('', ' is my spirit animal'));
+    expect(normalizePromptParts('Say "', '"'), ('Say " ', '"'));
   });
 }

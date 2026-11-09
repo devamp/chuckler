@@ -188,7 +188,10 @@ void main() {
 
       expect(find.text('6 FRIENDS ANSWERED'), findsOneWidget);
       for (final name in ['skyler', 'marco', 'ava', 'jules', 'priya', 'theo']) {
-        expect(find.text(name), findsOneWidget);
+        expect(
+            find.descendant(
+                of: find.byType(BottomSheet), matching: find.text(name)),
+            findsOneWidget);
       }
     });
 
@@ -328,6 +331,136 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('4 DAY STREAK'), findsOneWidget);
       expect(tester.takeException(), isNull);
+      Navigator.of(tester.element(find.byType(BottomSheet))).pop();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Create a prompt for your friends'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).first,
+          'The most suspicious thing to find in a fridge is');
+      await tester.pump();
+      expect(tester.takeException(), isNull);
     });
   }
+
+  group('prompt creators', () {
+    testWidgets('daily prompts come from Chuckler, with a fun bio',
+        (tester) async {
+      await pumpCreatePage(tester);
+      await swipeLeft(tester);
+      await swipeLeft(tester);
+      expect(find.text('Chuckler'), findsOneWidget);
+
+      await tester.tap(find.text('Chuckler'));
+      await tester.pumpAndSettle();
+      expect(find.text('Official account'), findsOneWidget);
+      expect(find.textContaining('Professional blank-filler'), findsOneWidget);
+    });
+
+    testWidgets('a friend prompt shows the friend who wrote it',
+        (tester) async {
+      await pumpCreatePage(tester);
+      await swipeLeft(tester);
+      expect(find.text('ava'), findsOneWidget);
+
+      await tester.tap(find.text('ava'));
+      await tester.pumpAndSettle();
+      expect(find.text('Friend'), findsOneWidget);
+      expect(find.text('Their full profile will open here.'), findsOneWidget);
+    });
+
+    testWidgets('live daily prompts come from Chuckler', (tester) async {
+      await pumpCreatePage(tester,
+          live: [livePrompt('p1', 'My toaster would say ', 57)]);
+      expect(find.text('Chuckler'), findsOneWidget);
+    });
+  });
+
+  group('creating a prompt', () {
+    Future<void> openBuilder(WidgetTester tester) async {
+      await tester.tap(find.byTooltip('Create a prompt for your friends'));
+      await tester.pumpAndSettle();
+    }
+
+    Finder builderField(int i) => find.descendant(
+        of: find.byType(BottomSheet), matching: find.byType(TextField)).at(i);
+
+    bool sendEnabled(WidgetTester tester) => tester
+        .widget<ElevatedButton>(
+            find.widgetWithText(ElevatedButton, 'Send to friends'))
+        .enabled;
+
+    testWidgets('the builder previews the prompt as you type', (tester) async {
+      await pumpCreatePage(tester);
+      await openBuilder(tester);
+
+      expect(find.text('NEW PROMPT'), findsOneWidget);
+      expect(sendEnabled(tester), isFalse);
+
+      await tester.enterText(builderField(0), '  My dog thinks  ');
+      await tester.enterText(builderField(1), 'is a snack');
+      await tester.pump();
+
+      expect(
+          find.descendant(
+              of: find.byType(BottomSheet),
+              matching: find.textContaining('My dog thinks ________ is a snack',
+                  findRichText: true)),
+          findsOneWidget);
+      expect(sendEnabled(tester), isTrue);
+    });
+
+    testWidgets('sending adds the prompt as your own, on this phone only',
+        (tester) async {
+      await pumpCreatePage(tester);
+      await openBuilder(tester);
+      await tester.enterText(builderField(0), 'My dog thinks');
+      await tester.enterText(builderField(1), 'is a snack');
+      await tester.pump();
+      await tester.tap(find.text('Send to friends'));
+      await tester.pumpAndSettle();
+
+      expect(create.length, 5);
+      expect(create.page, 4);
+      expect(promptText('My dog thinks'), findsOneWidget);
+      expect(find.text('You'), findsOneWidget);
+      expect(find.text('Only on this phone'), findsOneWidget);
+      expect(find.text('Friends'), findsOneWidget);
+      expect(find.text('1 of 4 answered'), findsOneWidget);
+      expect(find.text('No friends yet'), findsOneWidget);
+
+      // answering your own prompt stays local too
+      await tester.enterText(find.byType(TextField), 'a vacuum cleaner');
+      await tester.pump();
+      await tester.tap(find.text('Post'));
+      await tester.pumpAndSettle();
+      expect(find.text('YOUR ANSWER'), findsOneWidget);
+      expect((await firestore.collection('Posts').get()).docs, isEmpty);
+    });
+
+    testWidgets('only one new prompt a day', (tester) async {
+      await pumpCreatePage(tester);
+      await openBuilder(tester);
+      await tester.enterText(builderField(0), 'First prompt');
+      await tester.pump();
+      await tester.tap(find.text('Send to friends'));
+      await tester.pumpAndSettle();
+
+      await openBuilder(tester);
+      expect(find.text('NEW PROMPT'), findsNothing);
+      expect(find.text("You've made today's prompt. Come back tomorrow!"),
+          findsOneWidget);
+    });
+
+    testWidgets('backing out of the builder adds nothing', (tester) async {
+      await pumpCreatePage(tester);
+      await openBuilder(tester);
+      await tester.enterText(builderField(0), 'Never mind');
+      Navigator.of(tester.element(find.byType(BottomSheet))).pop();
+      await tester.pumpAndSettle();
+
+      expect(create.length, 4);
+      expect(create.canCreatePrompt(DateTime.now().toUtc()), isTrue);
+    });
+  });
 }

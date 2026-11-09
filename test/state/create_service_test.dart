@@ -1,5 +1,6 @@
 // Tests for CreateService, the state behind the Create tab.
 
+import 'package:chuckler/data/friend_prompts.dart';
 import 'package:chuckler/data/prompts.dart';
 import 'package:chuckler/database/models.dart';
 import 'package:chuckler/state/create_service.dart';
@@ -89,13 +90,40 @@ void main() {
     expect(s.likesFor(0), base);
   });
 
+  test('created prompts follow the others, survive reloads, one a day',
+      () async {
+    final now = DateTime.utc(2026, 11, 8, 15);
+    s.setPrompts([aPrompt('a')], [null]);
+    expect(s.canCreatePrompt(now), isTrue);
+    expect(s.creatorFor(0).uid, chucklerUid);
+
+    final mine = await createFriendPrompt(
+        FakeFirebaseFirestore(), DbUser('me', 'caden', 0, 0, ''), 'Hi', '');
+    const me = PromptCreator(uid: 'me', username: 'caden');
+    expect(s.addCreatedPrompt(mine, me, now), 1);
+    expect(s.page, 1);
+    expect(s.creatorFor(1).username, 'caden');
+    expect(s.canCreatePrompt(now), isFalse);
+    expect(s.canCreatePrompt(now.add(const Duration(days: 1))), isTrue);
+
+    s.markPosted(1, aPost(mine.promptId!, 'answer'));
+    s.setPrompts([aPrompt('a')], [null]);
+    expect(s.length, 2);
+    expect(s.postFor(1)?.answer, 'answer');
+    expect(s.creatorFor(1).username, 'caden');
+  });
+
   test('logout clears everything', () async {
     s.setPrompts([awaitingPrompt()], [null], includeSamples: true);
     s.setDraft(1, 'x');
     await s.loadStats(FakeFirebaseFirestore(), 'me');
+    await s.loadStats(FakeFirebaseFirestore(), 'me');
+    s.addCreatedPrompt(aPrompt('mine'),
+        const PromptCreator(uid: 'me', username: 'caden'), DateTime.utc(2026));
     s.logout();
 
     expect(s.length, 0);
+    expect(s.canCreatePrompt(DateTime.utc(2026)), isTrue);
     expect(s.streak, 0);
     s.setPrompts([awaitingPrompt()], [null], includeSamples: true);
     expect(s.draftFor(1), '');

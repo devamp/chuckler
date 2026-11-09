@@ -6,10 +6,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../Theme/theme.dart';
+import '../../data/friend_prompts.dart';
 import '../../data/posts.dart';
 import '../../data/prompt_stats.dart';
 import '../../data/prompts.dart';
-import '../../data/sample_prompts.dart';
 import '../../data/users.dart';
 import '../../database/isarDB.dart';
 import '../../database/models.dart';
@@ -18,6 +18,7 @@ import '../../state/prompt_service.dart';
 import '../../state/session_service.dart';
 import 'create_answer_box.dart';
 import 'create_prompt_card.dart';
+import 'create_prompt_sheet.dart';
 import 'create_stats.dart';
 import 'create_streak_sheet.dart';
 
@@ -121,8 +122,8 @@ class _CreatePageState extends State<CreatePage> {
 
     try {
       DbPost posted;
-      if (isSamplePrompt(prompt)) {
-        // answers to sample prompts never leave the phone
+      if (isLocalPrompt(prompt)) {
+        // answers to sample prompts and phone-only friend prompts stay here
         posted = DbPost('sample-${prompt.promptId}', text, user.username,
             user.uid, 0, 0, 0, prompt.promptId, prompt.promptDateId)
           ..mine = true;
@@ -171,13 +172,48 @@ class _CreatePageState extends State<CreatePage> {
   void like(CreateService createService, int i) {
     bool liked = createService.toggleLike(i);
     DbPrompt prompt = createService.prompts[i];
-    if (isSamplePrompt(prompt)) return;
+    if (isLocalPrompt(prompt)) return;
     likePrompt(
         Provider.of<FirebaseFirestore>(context, listen: false),
         Provider.of<SessionService>(context, listen: false).loggedInUser?.uid ??
             '',
         prompt,
         liked);
+  }
+
+  Future<void> createPrompt(CreateService createService) async {
+    DateTime now = DateTime.now().toUtc();
+    if (!createService.canCreatePrompt(now)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text("You've made today's prompt. Come back tomorrow!")));
+      return;
+    }
+    DbUser? user =
+        Provider.of<SessionService>(context, listen: false).loggedInUser;
+    if (user == null) {
+      showNotLoggedIn();
+      return;
+    }
+    FirebaseFirestore firestore =
+        Provider.of<FirebaseFirestore>(context, listen: false);
+    final parts = await showPromptBuilder(context);
+    if (parts == null || !mounted) return;
+    _answerFocus.unfocus();
+    DbPrompt prompt =
+        await createFriendPrompt(firestore, user, parts.$1, parts.$2);
+    int page = createService.addCreatedPrompt(
+        prompt,
+        PromptCreator(
+            uid: user.uid ?? '',
+            username: user.username ?? '',
+            photoUrl: user.profilePicture),
+        now);
+    _answer.clear();
+    // after the PageView has rebuilt with the new page
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _pages.hasClients) _pages.jumpToPage(page);
+    });
+    await createService.loadStats(firestore, user.uid ?? '', only: page);
   }
 
   void showNotLoggedIn() {
@@ -228,6 +264,12 @@ class _CreatePageState extends State<CreatePage> {
                         onPageChanged: onPageChanged,
                         itemBuilder: (context, i) => PromptCard(
                           prompt: createService.prompts[i],
+                          creator: createService.creatorFor(i),
+                          mine: createService.creatorFor(i).uid ==
+                              Provider.of<SessionService>(context,
+                                      listen: false)
+                                  .loggedInUser
+                                  ?.uid,
                           answer: createService.postFor(i)?.answer ??
                               createService.draftFor(i),
                           answered: createService.answered(i),
@@ -284,6 +326,11 @@ class _CreatePageState extends State<CreatePage> {
             StreakChip(
                 days: createService.streak,
                 onTap: () => showStreakSheet(context, createService.streak)),
+          const SizedBox(width: 8),
+          CreatePromptButton(
+            enabled: createService.canCreatePrompt(_now),
+            onTap: () => createPrompt(createService),
+          ),
         ],
       ),
     );

@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import '../database/models.dart';
+import 'friend_prompts.dart';
 import 'matchups.dart';
 import 'sample_prompts.dart';
 
@@ -97,6 +98,13 @@ class PromptStats {
 /// Stats for one prompt. myPost is the user's answer, or null.
 Future<PromptStats> getPromptStats(FirebaseFirestore firestore, String uid,
     DbPrompt prompt, DbPost? myPost) async {
+  if (isLocalFriendPrompt(prompt)) {
+    // only on this phone, so nobody else has answered or liked it
+    return PromptStats(
+      answers: myPost == null ? 0 : 1,
+      mine: myPost == null ? null : const AnswerStats(),
+    );
+  }
   if (isSamplePrompt(prompt) || kDebugMode) {
     return samplePromptStats(prompt, myPost);
   }

@@ -1,10 +1,12 @@
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
 import '../../CustomReusableWidgets/segment_chip.dart';
+import '../../data/friend_prompts.dart';
 import '../../data/prompt_stats.dart';
 import '../../data/prompts.dart';
 import '../../data/sample_prompts.dart';
 import '../../database/models.dart';
+import 'create_creator.dart';
 import 'create_stats.dart';
 
 /// Color of the user's own words inside a prompt
@@ -14,6 +16,10 @@ const Color answerColor = Color(0xfffbd0bf);
 /// answer, and a strip at the bottom shows how the prompt is doing.
 class PromptCard extends StatelessWidget {
   final DbPrompt prompt;
+  final PromptCreator creator;
+
+  /// the user made this prompt
+  final bool mine;
 
   /// the posted answer, or the unsent draft ('' for none)
   final String answer;
@@ -33,6 +39,8 @@ class PromptCard extends StatelessWidget {
   const PromptCard({
     super.key,
     required this.prompt,
+    required this.creator,
+    this.mine = false,
     required this.answer,
     required this.answered,
     required this.stats,
@@ -64,11 +72,23 @@ class PromptCard extends StatelessWidget {
           if (!awaiting)
             Row(
               children: [
+                Flexible(
+                    flex: 3,
+                    child: CreatorChip(creator: creator, isMe: mine)),
+                const SizedBox(width: 6),
                 SegmentChip(segment: segmentOf(prompt)),
                 if (isSamplePrompt(prompt)) ...[
                   const SizedBox(width: 6),
                   const Flexible(
+                      flex: 2,
                       child: _Tag(text: 'Sample', color: Colors.white54)),
+                ],
+                if (isLocalFriendPrompt(prompt)) ...[
+                  const SizedBox(width: 6),
+                  const Flexible(
+                      flex: 2,
+                      child: _Tag(
+                          text: 'Only on this phone', color: Colors.white54)),
                 ],
                 const Spacer(),
                 Flexible(
@@ -245,6 +265,36 @@ class StreakChip extends StatelessWidget {
                         fontWeight: FontWeight.bold)),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The + in the header that opens the prompt builder. Dimmed once today's
+/// prompt is made; tapping it then explains why.
+class CreatePromptButton extends StatelessWidget {
+  final bool enabled;
+  final VoidCallback onTap;
+
+  const CreatePromptButton(
+      {super.key, required this.enabled, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Create a prompt for your friends',
+      child: Material(
+        color: enabled ? Colors.amberAccent : Colors.white12,
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(6),
+            child: Icon(Icons.add,
+                color: enabled ? Colors.black : Colors.white38, size: 22),
           ),
         ),
       ),

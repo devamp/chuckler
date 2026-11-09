@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import '../data/friend_prompts.dart';
 import '../data/prompt_stats.dart';
 import '../data/prompts.dart';
 import '../data/sample_prompts.dart';
@@ -7,8 +8,9 @@ import '../database/models.dart';
 
 /// The Create tab: which prompt is showing, the user's answer or unsent draft
 /// for each one, and each prompt's stats. Live prompts come from
-/// PromptService and sample prompts may follow them. Drafts and answers to
-/// sample prompts survive reloads, so leaving the tab keeps them.
+/// PromptService; sample prompts and friend prompts the user made on this
+/// phone follow them. Drafts and local answers survive reloads, so leaving
+/// the tab keeps them.
 class CreateService with ChangeNotifier {
   List<DbPrompt> _prompts = List.empty(growable: true);
   List<DbPost?> _posts = List.empty(growable: true);
@@ -20,6 +22,14 @@ class CreateService with ChangeNotifier {
   /// likes the user changed on this phone, overriding PromptStats.likedByMe
   final Map<String, bool> _liked = {};
   Map<String, DbPost>? _samplePosts;
+
+  /// friend prompts made on this phone, with the user's answers to them
+  final List<DbPrompt> _created = List.empty(growable: true);
+  final Map<String, DbPost> _createdPosts = {};
+  final Map<String, PromptCreator> _creators = {};
+
+  /// UTC day of the last friend prompt made, for the one-a-day limit
+  DateTime? _lastCreatedDay;
 
   List<DbPrompt> get prompts => _prompts;
   int get page => _page;
@@ -59,6 +69,32 @@ class CreateService with ChangeNotifier {
 
   String _key(DbPrompt p) => '${p.promptDateId}/${p.promptId}';
 
+  /// Who made prompt i. Live daily prompts come from the Chuckler account.
+  PromptCreator creatorFor(int i) {
+    final p = _prompts[i];
+    // TODO(cloud): read the prompt's creator field once prompts carry one
+    // (docs/data-model.md, Prompts).
+    return _creators[_key(p)] ??
+        (isSamplePrompt(p) ? sampleCreator(p) : chuckler);
+  }
+
+  /// One new friend prompt a day
+  bool canCreatePrompt(DateTime nowUtc) =>
+      _lastCreatedDay == null ||
+      _lastCreatedDay != DateTime.utc(nowUtc.year, nowUtc.month, nowUtc.day);
+
+  /// Adds a friend prompt the user just made, shows it, and returns its page
+  int addCreatedPrompt(DbPrompt prompt, PromptCreator creator, DateTime nowUtc) {
+    _created.add(prompt);
+    _creators[_key(prompt)] = creator;
+    _lastCreatedDay = DateTime.utc(nowUtc.year, nowUtc.month, nowUtc.day);
+    _prompts.add(prompt);
+    _posts.add(null);
+    _page = _prompts.length - 1;
+    notifyListeners();
+    return _page;
+  }
+
   /// Shows the live prompts, followed by the sample prompts when
   /// includeSamples is set. livePosts[i] is the user's answer to live[i].
   void setPrompts(List<DbPrompt> live, List<DbPost?> livePosts,
@@ -74,6 +110,10 @@ class CreateService with ChangeNotifier {
         _prompts.add(p);
         _posts.add(_samplePosts![p.promptId]);
       }
+    }
+    for (DbPrompt p in _created) {
+      _prompts.add(p);
+      _posts.add(_createdPosts[p.promptId]);
     }
     if (_page >= _prompts.length) {
       _page = 0;
@@ -98,6 +138,8 @@ class CreateService with ChangeNotifier {
     _drafts.remove(_key(_prompts[i]));
     if (isSamplePrompt(_prompts[i])) {
       _samplePosts![_prompts[i].promptId!] = post;
+    } else if (isLocalFriendPrompt(_prompts[i])) {
+      _createdPosts[_prompts[i].promptId!] = post;
     }
     notifyListeners();
   }
@@ -128,6 +170,10 @@ class CreateService with ChangeNotifier {
     _stats.clear();
     _liked.clear();
     _samplePosts = null;
+    _created.clear();
+    _createdPosts.clear();
+    _creators.clear();
+    _lastCreatedDay = null;
     notifyListeners();
   }
 }
