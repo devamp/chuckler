@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/leaderboards.dart';
 import '../createpage/create_stats.dart';
 import '../friends/public_profile_page.dart';
+import '../../CustomReusableWidgets/moderation_sheets.dart';
 
 const _medals = [Color(0xFFFFD230), Color(0xFFC9D1D9), Color(0xFFD08B4E)];
 const _card = Color(0xCC1C1C1E);
@@ -40,6 +41,14 @@ void openLeaderProfile(
   Navigator.of(context).push(MaterialPageRoute(
       builder: (_) =>
           PublicProfilePage(username: username, photoUrl: photoUrl)));
+}
+
+/// Holding someone on a board: report or block them (not yourself)
+void holdLeader(
+    BuildContext context, String username, String photoUrl, bool isMe) {
+  if (isMe) return;
+  showHoldMenu(context,
+      actions: personActions(context, username: username, photoUrl: photoUrl));
 }
 
 /// The top three on a pedestal: second, first, third from left to right
@@ -103,6 +112,8 @@ class _PodiumSlot extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onTap: () => openLeaderProfile(
             context, entry.username, entry.photoUrl, entry.isMe),
+        onLongPress: () =>
+            holdLeader(context, entry.username, entry.photoUrl, entry.isMe),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -194,6 +205,8 @@ class LeaderRow extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           onTap: () => openLeaderProfile(
               context, entry.username, entry.photoUrl, entry.isMe),
+          onLongPress: () =>
+              holdLeader(context, entry.username, entry.photoUrl, entry.isMe),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
@@ -323,6 +336,8 @@ class TopAnswerCard extends StatelessWidget {
                 child: InkWell(
                   borderRadius: BorderRadius.circular(16),
                   onTap: () => openLeaderProfile(
+                      context, answer.username, answer.photoUrl, answer.isMe),
+                  onLongPress: () => holdLeader(
                       context, answer.username, answer.photoUrl, answer.isMe),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 2),

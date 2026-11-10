@@ -88,10 +88,8 @@ Future<List<DbPrompt>> getFriendPrompts(
         .where('dayId', isEqualTo: dayId)
         .get()
         .then((q) => q.docs),
-    friendPromptsRef(firestore)
-        .doc(friendPromptId(uid, dayId))
-        .get()
-        .then((d) => d.exists ? [d] : <DocumentSnapshot<Map<String, dynamic>>>[]),
+    friendPromptsRef(firestore).doc(friendPromptId(uid, dayId)).get().then(
+        (d) => d.exists ? [d] : <DocumentSnapshot<Map<String, dynamic>>>[]),
   ]);
   final byId = <String, DocumentSnapshot<Map<String, dynamic>>>{};
   for (final list in results) {
@@ -99,7 +97,10 @@ Future<List<DbPrompt>> getFriendPrompts(
       byId[d.id] = d;
     }
   }
-  final docs = byId.values.where((d) => d.data() != null).toList()
+  // hidden: taken down after reports
+  final docs = byId.values
+      .where((d) => d.data() != null && d.data()!['status'] != 'hidden')
+      .toList()
     ..sort((a, b) {
       final ta = a.data()!['createdAt'] as Timestamp?;
       final tb = b.data()!['createdAt'] as Timestamp?;

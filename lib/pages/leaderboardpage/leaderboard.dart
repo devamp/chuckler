@@ -7,6 +7,7 @@ import '../../data/leaderboards.dart';
 import '../../data/prompt_day.dart';
 import '../../state/friends_service.dart';
 import '../../state/leaderboard_service.dart';
+import '../../state/moderation_service.dart';
 import '../../state/session_service.dart';
 import '../accountpage/account_posts.dart' show dayLabel;
 import 'leaderboard_widgets.dart';
@@ -300,7 +301,21 @@ class _LeaderboardState extends State<Leaderboard> {
   }
 
   Widget _content(LeaderboardService service) {
-    final board = service.current;
+    final loaded = service.current;
+    // people the user blocked, and answers with words they filter out, stay
+    // off the boards
+    final moderation = Provider.of<ModerationService>(context);
+    final board = loaded == null
+        ? null
+        : Board(dayId: loaded.dayId, weekStart: loaded.weekStart, entries: [
+            for (final e in loaded.entries)
+              if (!moderation.isBlockedUsername(e.username)) e,
+          ], answers: [
+            for (final a in loaded.answers)
+              if (!moderation.isBlockedUsername(a.username) &&
+                  !moderation.filters('${a.before} ${a.answer} ${a.after}'))
+                a,
+          ]);
     if (board == null) {
       if (service.failed) {
         return _message(Icons.cloud_off, "Couldn't load the leaderboard",

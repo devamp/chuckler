@@ -1,11 +1,13 @@
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/matchups.dart';
 import '../../data/prompt_day.dart';
+import '../../data/moderation.dart';
+import '../../CustomReusableWidgets/moderation_sheets.dart';
+import '../../state/moderation_service.dart';
 import '../../state/prompt_service.dart';
 import '../../state/session_service.dart';
 import '../../state/voting_service.dart';
@@ -41,12 +43,24 @@ class _VotePageState extends State<VotePage>
     _slide = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 280))
       ..addListener(() => setState(() => _offset = _slideAnim!.value));
+    // keep reported, blocked and filtered matchups out of the queue
+    _moderation = Provider.of<ModerationService>(context, listen: false);
+    _voting = Provider.of<VotingService>(context, listen: false);
+    _voting.exclude = (m) => _moderation.hidesMatchup(
+        id: m.id,
+        prompt: '${m.promptBefore} ${m.promptAfter}',
+        answers: m.answers.map((a) => a.answer));
+    _moderation.addListener(_voting.refilter);
     loadMatchups();
     checkTutorial();
   }
 
+  late final ModerationService _moderation;
+  late final VotingService _voting;
+
   @override
   void dispose() {
+    _moderation.removeListener(_voting.refilter);
     _slide.dispose();
     super.dispose();
   }
@@ -225,57 +239,84 @@ class _VotePageState extends State<VotePage>
     if (authors != null) votingService.setAuthors(m, authors);
   }
 
-  /// Holding the prompt opens a menu to hide it from the queue
+  /// The uid in a friend prompt's id ({uid}_{dayId}), or null for a daily
+  /// prompt
+  String? _friendPromptCreator(Matchup m) {
+    if (m.scope != MatchupScope.friends) return null;
+    final cut = m.promptId.lastIndexOf('_');
+    return cut > 0 ? m.promptId.substring(0, cut) : null;
+  }
+
+  /// Holding the prompt: hide it from the queue, report it, or (a friend
+  /// prompt) block whoever wrote it
   Future<void> openPromptMenu(Matchup m) async {
-    HapticFeedback.mediumImpact();
-    final hide = await showModalBottomSheet<bool>(
-      context: context,
-      useSafeArea: true,
-      showDragHandle: true,
-      backgroundColor: const Color(0xFF1C1C1E),
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-              child: Text.rich(
-                TextSpan(children: [
-                  TextSpan(text: m.promptBefore),
-                  const TextSpan(
-                      text: '____', style: TextStyle(color: Colors.amber)),
-                  TextSpan(text: m.promptAfter),
-                ]),
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                    color: Colors.white70,
-                    fontFamily: 'OpenSans',
-                    fontSize: 15),
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.visibility_off_outlined,
-                  color: Colors.white),
-              title: const Text('Hide this prompt',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontFamily: 'OpenSans',
-                      fontWeight: FontWeight.bold)),
-              subtitle: const Text("You won't see matchups for it today.",
-                  style:
-                      TextStyle(color: Colors.white54, fontFamily: 'OpenSans')),
-              onTap: () => Navigator.of(context).pop(true),
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-    if (hide == true && mounted) hidePrompt(m);
+    final me =
+        Provider.of<SessionService>(context, listen: false).loggedInUser?.uid;
+    final creator = _friendPromptCreator(m);
+    await showHoldMenu(context,
+        header: promptHeader(m.promptBefore, m.promptAfter),
+        actions: [
+          HoldAction(
+              icon: Icons.visibility_off_outlined,
+              label: 'Hide this prompt',
+              subtitle: "You won't see matchups for it today.",
+              run: () async {
+                if (mounted) await hidePrompt(m);
+              }),
+          HoldAction(
+              icon: Icons.flag_outlined,
+              label: 'Report prompt',
+              run: () => reportFlow(context,
+                  what: 'prompt',
+                  target: ReportTarget.prompt,
+                  targetId: m.promptId)),
+          if (creator != null && creator != me)
+            HoldAction(
+                icon: Icons.block,
+                label: 'Block whoever wrote it',
+                danger: true,
+                run: () async {
+                  final firestore =
+                      Provider.of<FirebaseFirestore>(context, listen: false);
+                  final name = await usernameForUid(firestore, creator);
+                  if (name == null || !mounted) return;
+                  await blockFlow(context,
+                      username: name, uid: creator, matchupId: m.id);
+                }),
+        ]);
+  }
+
+  /// Holding an answer: report it, or block its author once they're known
+  /// (after voting)
+  Future<void> openAnswerMenu(Matchup m, int card) async {
+    final voting = Provider.of<VotingService>(context, listen: false);
+    final me = Provider.of<SessionService>(context, listen: false)
+        .loggedInUser
+        ?.username;
+    final author = voting.authorsFor(m)?[card];
+    await showHoldMenu(context,
+        header: quoteHeader(m.answers[card].answer),
+        actions: [
+          HoldAction(
+              icon: Icons.flag_outlined,
+              label: 'Report answer',
+              subtitle: "It leaves your queue now.",
+              run: () => reportFlow(context,
+                  what: 'answer',
+                  target: ReportTarget.answer,
+                  targetId: m.answers[card].postId,
+                  postId: m.answers[card].postId,
+                  matchupId: m.id)),
+          if (author != null && author.username != me)
+            HoldAction(
+                icon: Icons.block,
+                label: 'Block ${author.username}',
+                danger: true,
+                run: () => blockFlow(context,
+                    username: author.username,
+                    photoUrl: author.photoUrl,
+                    matchupId: m.id)),
+        ]);
   }
 
   /// Hides [m]'s prompt from the queue, saves it, and offers Undo
@@ -447,6 +488,7 @@ class _VotePageState extends State<VotePage>
               pickPercent: m.pickPercent(card),
               onVote: (type) => onVote(m, card, type),
               onOpenComments: () => openComments(m, card),
+              onHold: () => openAnswerMenu(m, card),
             ),
           ),
         if (myVote != null) commentsPreview(m, myVote.card),

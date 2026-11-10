@@ -3,7 +3,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../data/moderation.dart';
 import '../../data/users.dart';
+import '../constant_strings.dart';
 class SignupPage extends StatefulWidget {
   @override
   SignupPage({super.key});
@@ -17,6 +20,7 @@ class _SignupState extends State<SignupPage> {
   String email = '';
   String password = '';
   int age = 18;
+  bool agreed = false;
   ValueNotifier<bool> isLoading = ValueNotifier(false);
 
   @override
@@ -149,6 +153,28 @@ class _SignupState extends State<SignupPage> {
                       age = value;
                     },
                   ),
+                  // App Store guideline 1.2: users agree to terms that rule
+                  // out objectionable content
+                  CheckboxListTile(
+                    value: agreed,
+                    onChanged: (v) => setState(() => agreed = v ?? false),
+                    controlAffinity: ListTileControlAffinity.leading,
+                    activeColor: Colors.amberAccent,
+                    checkColor: Colors.black,
+                    contentPadding: EdgeInsets.zero,
+                    title: GestureDetector(
+                      onTap: termsUrl.isEmpty
+                          ? null
+                          : () => launchUrl(Uri.parse(termsUrl),
+                              mode: LaunchMode.externalApplication),
+                      child: Text(
+                        "I agree to the${termsUrl.isEmpty ? '' : ' (tap to read)'} Terms and won't post objectionable or abusive content.",
+                        style: const TextStyle(
+                            color: Colors.white, fontSize: 14),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   SizedBox(
                     width: 200,
                     child: ElevatedButton(
@@ -156,9 +182,14 @@ class _SignupState extends State<SignupPage> {
                         if(isLoading.value){return;}
                         isLoading.value = true;
                         //Register User if it is valid information
-                        print(username);
-                        print(email);
-                        print(password);
+                        if (!agreed) {
+                          isLoading.value = false;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text(
+                                      'Agree to the Terms to make an account.')));
+                          return;
+                        }
                         if (username.isNotEmpty &&
                             email.isNotEmpty &&
                             password.isNotEmpty) {
@@ -166,6 +197,12 @@ class _SignupState extends State<SignupPage> {
                             if (!validUsername.hasMatch(username)) {
                               throw Exception(
                                   '] Usernames are 3 to 20 letters, numbers, dots or underscores.');
+                            }
+                            // no slurs or explicit words in usernames, which
+                            // everyone sees (leaderboards, comments)
+                            final words = wordsIn(await loadWordList());
+                            if (containsBlockedWords(username, words)) {
+                              throw Exception('] $blockedUsernameMessage');
                             }
                             UserCredential result =
                                 await _auth.createUserWithEmailAndPassword(

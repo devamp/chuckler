@@ -425,6 +425,66 @@ describe("the app's exact writes and reads", () => {
   });
 });
 
+describe("reports", () => {
+  const report = (extra = {}) => ({reporter: "alice", targetType: "answer",
+    targetId: "bobs", postId: "bobs", matchupId: "m1", reason: "offensive",
+    at: serverTimestamp(), ...extra});
+
+  it("lets you report as yourself, and nobody read or change reports",
+      async () => {
+        await assertSucceeds(setDoc(doc(as("alice"), "Reports/r1"), report()));
+        await assertSucceeds(setDoc(doc(as("alice"), "Reports/r2"),
+            report({targetType: "user", targetId: "bob", note: "rude",
+              postId: "", matchupId: ""})));
+        await assertFails(getDoc(doc(as("alice"), "Reports/r1")));
+        await assertFails(updateDoc(doc(as("alice"), "Reports/r1"),
+            {reason: "spam"}));
+        await assertFails(deleteDoc(doc(as("alice"), "Reports/r1")));
+      });
+
+  it("refuses reports as someone else or with unknown fields", async () => {
+    await assertFails(setDoc(doc(as("alice"), "Reports/r1"),
+        report({reporter: "bob"})));
+    await assertFails(setDoc(doc(as("alice"), "Reports/r1"),
+        report({reason: "boring"})));
+    await assertFails(setDoc(doc(as("alice"), "Reports/r1"),
+        report({targetType: "matchup"})));
+    await assertFails(setDoc(doc(as("alice"), "Reports/r1"),
+        report({extra: 1})));
+    await assertFails(setDoc(doc(as("alice"), "Reports/r1"),
+        report({note: "x".repeat(301)})));
+    await assertFails(setDoc(doc(as("alice"), "Moderation/answer_bobs"),
+        {count: 0}));
+    await assertFails(getDoc(doc(as("alice"), "Moderation/answer_bobs")));
+  });
+});
+
+describe("blocking", () => {
+  const block = (uid, extra = {}) => ({uid, username: uid, photoUrl: "",
+    at: serverTimestamp(), ...extra});
+
+  it("lets you block and unblock others, privately", async () => {
+    await assertSucceeds(setDoc(doc(as("alice"), "Users/alice/Blocked/bob"),
+        block("bob")));
+    await assertSucceeds(getDoc(doc(as("alice"), "Users/alice/Blocked/bob")));
+    await assertFails(getDoc(doc(as("bob"), "Users/alice/Blocked/bob")));
+    await assertSucceeds(deleteDoc(doc(as("alice"),
+        "Users/alice/Blocked/bob")));
+  });
+
+  it("refuses blocking yourself, for someone else, or a mismatched doc",
+      async () => {
+        await assertFails(setDoc(doc(as("alice"),
+            "Users/alice/Blocked/alice"), block("alice")));
+        await assertFails(setDoc(doc(as("bob"), "Users/alice/Blocked/carol"),
+            block("carol")));
+        await assertFails(setDoc(doc(as("alice"), "Users/alice/Blocked/bob"),
+            block("carol")));
+        await assertFails(setDoc(doc(as("alice"), "Users/alice/Blocked/bob"),
+            block("bob", {extra: 1})));
+      });
+});
+
 describe("leaderboards", () => {
   it("lets signed-in users read and nobody write", async () => {
     await seed({"Leaderboards/wins-all": {board: "wins-all", entries: []}});
@@ -744,6 +804,16 @@ describe("friend requests by username", () => {
         await assertFails(setDoc(doc(as("bob"),
             "Users/nobody/FriendRequests/bob"), card("bob")));
       });
+
+  it("refuses a request across a block, either way", async () => {
+    const block = (who) => ({uid: who, username: who, photoUrl: "",
+      at: new Date()});
+    await seed({"Users/alice/Blocked/bob": block("bob")});
+    await assertFails(setDoc(doc(as("bob"), "Users/alice/FriendRequests/bob"),
+        card("bob")));
+    await assertFails(setDoc(doc(as("alice"),
+        "Users/bob/FriendRequests/alice"), card("alice")));
+  });
 
   it("refuses a request when already friends", async () => {
     await seed({"Users/alice/Friends/bob": friendDoc("bob")});

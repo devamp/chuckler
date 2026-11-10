@@ -1,7 +1,10 @@
 // Widget tests for swipe voting on the Home tab, with the sample matchups
 // stored in a fake Firestore.
 
+import 'dart:io';
+
 import 'package:chuckler/data/matchups.dart';
+import 'package:chuckler/data/moderation.dart';
 import 'package:chuckler/data/prompt_day.dart';
 import 'package:chuckler/data/sample_matchups.dart';
 import 'package:chuckler/database/models.dart';
@@ -14,6 +17,7 @@ import 'package:chuckler/state/voting_service.dart';
 import 'package:chuckler/state/friends_service.dart';
 import 'package:chuckler/pages/feedpage/matchup_filter.dart';
 import 'package:chuckler/pages/friends/public_profile_page.dart';
+import 'package:chuckler/state/moderation_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -26,6 +30,7 @@ import 'fonts.dart';
 void main() {
   late VotingService voting;
   late FakeFirebaseFirestore firestore;
+  late ModerationService moderation;
 
   Future<void> pumpVotePage(WidgetTester tester,
       {bool tutorialSeen = true,
@@ -39,6 +44,10 @@ void main() {
 
     voting = VotingService();
     firestore = FakeFirebaseFirestore();
+    moderation = ModerationService(
+        loadCategories: () async => parseWordList(
+            File('functions/wordlist.json').readAsStringSync()));
+    await tester.runAsync(() => moderation.load(firestore, 'me'));
     await tester.runAsync(() async {
       await seedMatchups(firestore, sampleMatchups(), posts: posts);
       await firestore.doc('MatchUps/sample-1/Authors/names').set({
@@ -52,6 +61,7 @@ void main() {
       ..setLoggedInUser(DbUser('me', 'caden', 0, 0, ''));
     await tester.pumpWidget(MultiProvider(
       providers: [
+        ChangeNotifierProvider.value(value: moderation),
         ChangeNotifierProvider.value(value: session),
         ChangeNotifierProvider.value(value: voting),
         ChangeNotifierProvider.value(value: PromptService()),
@@ -413,6 +423,7 @@ void main() {
         ..setLoggedInUser(DbUser('me', 'caden', 0, 0, ''));
       await tester.pumpWidget(MultiProvider(
         providers: [
+          ChangeNotifierProvider(create: (_) => ModerationService()),
           ChangeNotifierProvider.value(value: session),
           ChangeNotifierProvider.value(value: VotingService()),
           ChangeNotifierProvider.value(value: PromptService()),
@@ -451,6 +462,7 @@ void main() {
     await tester.runAsync(() => seedMatchups(firestore, sampleMatchups()));
     await tester.pumpWidget(MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => ModerationService()),
         ChangeNotifierProvider.value(
             value: SessionService()
               ..setLoggedInUser(DbUser('me', 'caden', 0, 0, ''))),
@@ -560,6 +572,7 @@ void main() {
     });
     await tester.pumpWidget(MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => ModerationService()),
         ChangeNotifierProvider.value(
             value: SessionService()
               ..setLoggedInUser(DbUser('me', 'caden', 0, 0, ''))),
@@ -752,5 +765,135 @@ void main() {
     await tester.pumpAndSettle();
     expect(voting.length, 3);
     expect(answer('Anyone know which button is autopilot?'), findsNothing);
+  });
+
+  group('moderation', () {
+    testWidgets('holding an answer reports it and it leaves the queue',
+        (tester) async {
+      await pumpVotePage(tester);
+      await tester.longPress(answer('Anyone know which button is autopilot?'));
+      await tester.pumpAndSettle();
+      expect(find.text('Report answer'), findsOneWidget);
+      // authors aren't known before voting, so no Block yet
+      expect(find.textContaining('Block'), findsNothing);
+
+      await tester.tap(find.text('Report answer'));
+      await tester.pumpAndSettle();
+      expect(find.text('Why are you reporting this answer?'), findsOneWidget);
+      await tester.tap(find.text('Offensive or hateful'));
+      await tester.pump();
+      await tester.runAsync(
+          () => Future.delayed(const Duration(milliseconds: 50)));
+      await tester.pumpAndSettle();
+
+      expect(find.text("Thanks for reporting. We'll review it."),
+          findsOneWidget);
+      expect(answer('Anyone know which button is autopilot?'), findsNothing);
+      expect(answer('Hold my coffee'), findsOneWidget);
+      final reports = await tester
+          .runAsync(() => firestore.collection('Reports').get());
+      final r = reports!.docs.single.data();
+      expect([r['targetType'], r['matchupId'], r['reason']],
+          ['answer', 'sample-1', 'offensive']);
+    });
+
+    testWidgets('after voting, holding an answer can block its author',
+        (tester) async {
+      await pumpVotePage(tester);
+      await tester.runAsync(() async {
+        await firestore.doc('Usernames/skyler').set({'uid': 'u-sky'});
+      });
+      await tester.tap(find.byTooltip('Pick this answer as the winner').first);
+      await tester.pump();
+      await tester.runAsync(
+          () => Future.delayed(const Duration(milliseconds: 50)));
+      await tester.pumpAndSettle();
+      await tester.longPress(answer('Anyone know which button is autopilot?'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Block skyler'));
+      await tester.pumpAndSettle();
+      expect(find.text('Block skyler?'), findsOneWidget);
+      await tester.tap(find.widgetWithText(TextButton, 'Block'));
+      await tester.pump();
+      await tester.runAsync(
+          () => Future.delayed(const Duration(milliseconds: 50)));
+      // past blockFlow's wait before it reloads the friends list
+      await tester.pump(const Duration(seconds: 1));
+      await tester.runAsync(
+          () => Future.delayed(const Duration(milliseconds: 50)));
+      await tester.pumpAndSettle();
+      expect(moderation.isBlocked('u-sky'), isTrue);
+      expect(answer('Anyone know which button is autopilot?'), findsNothing);
+      final doc = await tester
+          .runAsync(() => firestore.doc('Users/me/Blocked/u-sky').get());
+      expect(doc!.data()!['username'], 'skyler');
+    });
+
+    testWidgets('the prompt menu offers hide and report', (tester) async {
+      await pumpVotePage(tester);
+      await tester.longPress(
+          find.textContaining('your pilot say', findRichText: true).first);
+      await tester.pumpAndSettle();
+      expect(find.text('Hide this prompt'), findsOneWidget);
+      expect(find.text('Report prompt'), findsOneWidget);
+    });
+
+    testWidgets('filter and block changes re-filter the queue',
+        (tester) async {
+      await pumpVotePage(tester);
+      final before = voting.length;
+      await tester.runAsync(
+          () => moderation.setFiltered(firestore, 'me', 'profanity', true));
+      await tester.pumpAndSettle();
+      expect(voting.length, before, reason: 'no swearing in the samples');
+      // a blocked user's matchup leaves the queue as soon as it's known
+      await tester.runAsync(() => moderation.block(
+          firestore, 'me', const BlockedUser('x', 'x'),
+          matchupId: 'sample-1'));
+      await tester.pumpAndSettle();
+      expect(voting.length, before - 1);
+      expect(answer('Hold my coffee'), findsOneWidget);
+    });
+
+    testWidgets('holding a comment reports it, and it disappears',
+        (tester) async {
+      await pumpVotePage(tester);
+      await tester.runAsync(() => firestore
+              .doc('Posts/s1a/CommentPages/0')
+              .set({
+            'comments': {
+              'c1': {
+                'uid': 'u-ben',
+                'username': 'ben',
+                'text': 'pilots hate this',
+                'at': Timestamp.fromDate(DateTime.utc(2026, 11, 8)),
+              },
+            },
+          }));
+      await tester.drag(answer('Anyone know which button is autopilot?'),
+          const Offset(300, 0));
+      await tester.runAsync(
+          () => Future.delayed(const Duration(milliseconds: 50)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Comments'));
+      await tester.runAsync(
+          () => Future.delayed(const Duration(milliseconds: 50)));
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.text('pilots hate this'));
+      await tester.pumpAndSettle();
+      expect(find.text('Block ben'), findsOneWidget);
+      await tester.tap(find.text('Report comment'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Spam'));
+      await tester.pump();
+      await tester.runAsync(
+          () => Future.delayed(const Duration(milliseconds: 50)));
+      await tester.pumpAndSettle();
+      expect(find.text('pilots hate this'), findsNothing);
+      final reports = await tester
+          .runAsync(() => firestore.collection('Reports').get());
+      expect(reports!.docs.single.data()['commentId'], 'c1');
+    });
   });
 }

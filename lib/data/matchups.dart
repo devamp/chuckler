@@ -102,6 +102,9 @@ class Matchup {
   /// answers[0] is the top card, answers[1] the bottom card
   final List<MatchupAnswer> answers;
 
+  /// "active", or "hidden" once reports took it down
+  final String status;
+
   Matchup({
     required this.id,
     required this.promptId,
@@ -110,6 +113,7 @@ class Matchup {
     required this.promptAfter,
     required this.segment,
     this.scope = MatchupScope.public,
+    this.status = 'active',
     required MatchupAnswer top,
     required MatchupAnswer bottom,
   }) : answers = [top, bottom];
@@ -128,6 +132,7 @@ class Matchup {
       scope: data['scope'] == 'friends'
           ? MatchupScope.friends
           : MatchupScope.public,
+      status: data['status'] as String? ?? 'active',
       top: MatchupAnswer.fromMap(Map<String, dynamic>.from(answers[0])),
       bottom: MatchupAnswer.fromMap(Map<String, dynamic>.from(answers[1])),
     );
@@ -252,7 +257,8 @@ Future<List<Matchup>> getVotingMatchups(
     for (final doc in matchups)
       if (!voted.contains(doc.id))
         if (Matchup.fromDoc(doc.id, doc.data()) case final m?)
-          if (!m.includesAnyPost(mine)) m,
+          // hidden: taken down after reports
+          if (!m.includesAnyPost(mine) && m.status != 'hidden') m,
   ];
 }
 

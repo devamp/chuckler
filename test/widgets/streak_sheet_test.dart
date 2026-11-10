@@ -5,6 +5,7 @@ import 'package:chuckler/database/models.dart';
 import 'package:chuckler/pages/createpage/create_streak_sheet.dart';
 import 'package:chuckler/state/friends_service.dart';
 import 'package:chuckler/state/session_service.dart';
+import 'package:chuckler/state/moderation_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
@@ -23,6 +24,7 @@ void main() {
         ..setLoggedInUser(DbUser('u1', 'ava', 0, 0, ''));
       await tester.pumpWidget(MultiProvider(
         providers: [
+          ChangeNotifierProvider(create: (_) => ModerationService()),
           ChangeNotifierProvider.value(value: session),
           ChangeNotifierProvider.value(value: FriendsService()),
           Provider<FirebaseFirestore>.value(value: FakeFirebaseFirestore()),
@@ -69,6 +71,7 @@ void main() {
       ..setLoggedInUser(DbUser('u1', 'ava', 0, 0, ''));
     await tester.pumpWidget(MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => ModerationService()),
         ChangeNotifierProvider.value(value: session),
         ChangeNotifierProvider.value(value: FriendsService()),
         Provider<FirebaseFirestore>.value(value: FakeFirebaseFirestore()),

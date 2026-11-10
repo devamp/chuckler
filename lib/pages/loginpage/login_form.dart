@@ -10,6 +10,7 @@ import '../../data/prompts.dart';
 import '../../data/users.dart';
 import '../../data/posts.dart';
 import '../../state/session_service.dart';
+import '../../state/moderation_service.dart';
 import '../../state/prompt_service.dart';
 import '../../state/feed_service.dart';
 import '../../database/isarDB.dart';
@@ -40,9 +41,13 @@ class _LoginFormState extends State<LoginForm> {
       user = result.user!;
       Provider.of<SessionService>(context, listen: false).email = user.email;
       await setupUserSession(context, user.uid);
+      // blocks, reports and the content filter, before Home builds its queue
+      await Provider.of<ModerationService>(context, listen: false).load(
+          Provider.of<FirebaseFirestore>(context, listen: false), user.uid);
       return true;
     } catch (e) {
-      print('THIS IS WHERE THE ERROR IS $email, $password Error: $e');
+      // never log the password
+      debugPrint('login failed: $e');
       return false;
     }
   }

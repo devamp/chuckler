@@ -1,7 +1,12 @@
 // Settings: account details, change password, hidden prompts, logging out
 // and deleting the account, with a fake Firestore and a mock FirebaseAuth.
 
+import 'dart:io';
+
 import 'package:chuckler/data/matchups.dart';
+import 'package:chuckler/data/moderation.dart';
+import 'package:chuckler/pages/accountpage/settings-routes/blocked_users_page.dart';
+import 'package:chuckler/pages/accountpage/settings-routes/content_filter_page.dart';
 import 'package:chuckler/data/prompt_day.dart';
 import 'package:chuckler/database/models.dart';
 import 'package:chuckler/pages/accountpage/settings.dart';
@@ -15,6 +20,7 @@ import 'package:chuckler/state/leaderboard_service.dart';
 import 'package:chuckler/state/prompt_service.dart';
 import 'package:chuckler/state/session_service.dart';
 import 'package:chuckler/state/voting_service.dart';
+import 'package:chuckler/state/moderation_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart' hide Settings;
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -31,6 +37,7 @@ void main() {
   late VotingService voting;
   late MockFirebaseAuth auth;
   late FakeFirebaseFirestore firestore;
+  late ModerationService moderation;
 
   setUp(() {
     session = SessionService()
@@ -41,6 +48,9 @@ void main() {
         signedIn: true,
         mockUser: MockUser(uid: 'u1', email: 'ava@chuckler.test'));
     firestore = FakeFirebaseFirestore();
+    moderation = ModerationService(
+        loadCategories: () async => parseWordList(
+            File('functions/wordlist.json').readAsStringSync()));
   });
 
   Future<void> pump(WidgetTester tester, Widget home,
@@ -53,6 +63,7 @@ void main() {
     if (seed != null) await seed(firestore);
     await tester.pumpWidget(MultiProvider(
       providers: [
+        ChangeNotifierProvider.value(value: moderation),
         ChangeNotifierProvider.value(value: session),
         ChangeNotifierProvider.value(value: voting),
         ChangeNotifierProvider.value(value: PromptService()),
@@ -198,6 +209,55 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('route /'), findsOneWidget);
       expect(session.loggedInUser, isNull);
+    });
+  });
+
+  group('safety', () {
+    testWidgets('Blocked users lists them and unblocks', (tester) async {
+      await pump(tester, const BlockedUsersPage(), seed: (f) async {
+        await f.doc('Users/u1/Blocked/u9')
+            .set({'uid': 'u9', 'username': 'troll', 'photoUrl': ''});
+      });
+      await tester.runAsync(() => moderation.load(firestore, 'u1'));
+      await tester.pumpAndSettle();
+      expect(find.text('troll'), findsOneWidget);
+      await tester.tap(find.text('Unblock'));
+      await tester.runAsync(
+          () => Future.delayed(const Duration(milliseconds: 50)));
+      await tester.pumpAndSettle();
+      expect(find.text('troll'), findsNothing);
+      expect(find.textContaining("haven't blocked anyone"), findsOneWidget);
+      final doc = await tester
+          .runAsync(() => firestore.doc('Users/u1/Blocked/u9').get());
+      expect(doc!.exists, isFalse);
+    });
+
+    testWidgets('Content filter shows the defaults and saves a change',
+        (tester) async {
+      await pump(tester, const ContentFilterPage());
+      await tester.runAsync(() => moderation.load(firestore, 'u1'));
+      await tester.pumpAndSettle();
+      bool on(String label) => tester
+          .widget<SwitchListTile>(find.widgetWithText(SwitchListTile, label))
+          .value;
+      expect(on('Hate speech & slurs'), isTrue);
+      expect(on('Sexual content'), isTrue);
+      expect(on('Strong language'), isFalse);
+
+      await tester.tap(find.text('Strong language'));
+      await tester.runAsync(
+          () => Future.delayed(const Duration(milliseconds: 50)));
+      await tester.pumpAndSettle();
+      expect(on('Strong language'), isTrue);
+      final saved =
+          await tester.runAsync(() => getContentFilter(firestore, 'u1'));
+      expect(saved, {'slurs', 'sexual', 'profanity'});
+    });
+
+    testWidgets('Settings has a Safety section', (tester) async {
+      await pump(tester, settings());
+      expect(find.text('Content filter'), findsOneWidget);
+      expect(find.text('Blocked users'), findsOneWidget);
     });
   });
 }

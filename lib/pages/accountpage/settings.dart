@@ -9,6 +9,9 @@ import '../constant_strings.dart';
 import '../createpage/create_stats.dart';
 import 'settings-routes/delete_account_page.dart';
 import 'settings-routes/hidden_prompts_page.dart';
+import 'settings-routes/blocked_users_page.dart';
+import 'settings-routes/content_filter_page.dart';
+import '../../state/moderation_service.dart';
 
 const _groupColor = Color(0xFF1C1C1E);
 
@@ -65,6 +68,18 @@ class Settings extends StatelessWidget {
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => const HiddenPromptsPage()))),
           ]),
+          _sectionTitle('Safety'),
+          _group([
+            _row(Icons.filter_alt_outlined, 'Content filter',
+                chevron: true,
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const ContentFilterPage()))),
+            _row(Icons.block, 'Blocked users',
+                value: _blockedCount(context),
+                chevron: true,
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => const BlockedUsersPage()))),
+          ]),
           _sectionTitle('About'),
           _group([
             if (supportEmail.isNotEmpty)
@@ -105,6 +120,11 @@ class Settings extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _blockedCount(BuildContext context) {
+    final n = Provider.of<ModerationService>(context).blocked.length;
+    return n == 0 ? '' : '$n';
   }
 
   Widget _profileHeader(String username, String email) {
@@ -159,10 +179,11 @@ class Settings extends StatelessWidget {
   }
 
   Widget _group(List<Widget> rows) {
-    return Container(
+    // Material, so the rows' tap ripple shows on the group's color
+    return Material(
+      color: _groupColor,
+      borderRadius: BorderRadius.circular(14),
       clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-          color: _groupColor, borderRadius: BorderRadius.circular(14)),
       child: Column(
         children: [
           for (int i = 0; i < rows.length; i++) ...[

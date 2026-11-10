@@ -29,7 +29,7 @@ async function deleteAll(db, query) {
  * - their friend prompts, votes and dislikes
  * - their comments on other people's answers (onCommentPageWritten then
  *   fixes counts and previews)
- * - their rows on the global leaderboards
+ * - their rows on the global leaderboards, and blocks others hold on them
  * Counts on other people's answers from their old votes are left as they
  * are.
  * @param {object} db
@@ -105,6 +105,10 @@ async function deleteUserData(db, uid) {
     const owner = (await claim.get()).data()?.uid;
     if (owner === uid) await claim.delete();
   }
+
+  // blocks others hold about them (their own go with their Users tree)
+  done.blockedBy = await deleteAll(db,
+      db.collectionGroup("Blocked").where("uid", "==", uid));
 
   await db.recursiveDelete(userRef);
   return done;

@@ -18,6 +18,9 @@ import '../../state/friends_service.dart';
 import '../../state/create_service.dart';
 import '../../state/prompt_service.dart';
 import '../../state/session_service.dart';
+import '../../state/moderation_service.dart';
+import '../../data/moderation.dart';
+import '../../CustomReusableWidgets/moderation_sheets.dart';
 import 'create_answer_box.dart';
 import 'create_prompt_card.dart';
 import 'create_prompt_sheet.dart';
@@ -47,6 +50,9 @@ class _CreatePageState extends State<CreatePage> {
     CreateService createService =
         Provider.of<CreateService>(context, listen: false);
     _pages = PageController(initialPage: createService.page);
+    // a report, block or filter change re-filters the friend prompts
+    _moderation = Provider.of<ModerationService>(context, listen: false);
+    _moderation.addListener(_applyFriendPrompts);
     // after the first frame, since loading notifies listeners
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -63,8 +69,58 @@ class _CreatePageState extends State<CreatePage> {
     });
   }
 
+  late final ModerationService _moderation;
+
+  /// today's friend prompts and the user's answers, before moderation
+  List<DbPrompt> _friendPrompts = const [];
+  Map<String, DbPost> _friendAnswers = const {};
+
+  /// Shows the friend prompts that aren't reported, by someone blocked or
+  /// filtered out
+  void _applyFriendPrompts() {
+    if (!mounted) return;
+    final uid =
+        Provider.of<SessionService>(context, listen: false).loggedInUser?.uid;
+    if (uid == null) return;
+    final shown = [
+      for (final p in _friendPrompts)
+        if (p.creatorUid == uid ||
+            !_moderation.hidesPrompt(
+                id: p.promptId ?? '',
+                creatorUid: p.creatorUid,
+                text: '${p.before} ${p.after}'))
+          p,
+    ];
+    Provider.of<CreateService>(context, listen: false).setFriendPrompts(
+        shown, _friendAnswers,
+        uid: uid, nowUtc: DateTime.now().toUtc());
+  }
+
+  /// Holding a friend's prompt card: report the prompt or block its creator
+  Future<void> _openPromptMenu(DbPrompt prompt, PromptCreator creator) =>
+      showHoldMenu(context,
+          header: promptHeader(prompt.before ?? '', prompt.after ?? ''),
+          actions: [
+            HoldAction(
+                icon: Icons.flag_outlined,
+                label: 'Report prompt',
+                run: () => reportFlow(context,
+                    what: 'prompt',
+                    target: ReportTarget.prompt,
+                    targetId: prompt.promptId ?? '')),
+            HoldAction(
+                icon: Icons.block,
+                label: 'Block ${creator.username}',
+                danger: true,
+                run: () => blockFlow(context,
+                    username: creator.username,
+                    uid: creator.uid,
+                    photoUrl: creator.photoUrl)),
+          ]);
+
   @override
   void dispose() {
+    _moderation.removeListener(_applyFriendPrompts);
     _clock?.cancel();
     _pages.dispose();
     _answer.dispose();
@@ -104,9 +160,9 @@ class _CreatePageState extends State<CreatePage> {
           getMyAnswersForDay(firestore, user, dayId),
         ]);
         if (!mounted) return;
-        createService.setFriendPrompts(results[0] as List<DbPrompt>,
-            results[1] as Map<String, DbPost>,
-            uid: uid, nowUtc: now);
+        _friendPrompts = results[0] as List<DbPrompt>;
+        _friendAnswers = results[1] as Map<String, DbPost>;
+        _applyFriendPrompts();
         if (createService.length > 0) {
           _answer.text = createService.draftFor(createService.page);
           if (_pages.hasClients && _pages.page?.round() != createService.page) {
@@ -134,8 +190,8 @@ class _CreatePageState extends State<CreatePage> {
       await friends.load(firestore, uid,
           Provider.of<SessionService>(context, listen: false).email);
     }
-    createService.setFriends(
-        {for (final f in friends.friends) f.uid: f.username});
+    createService
+        .setFriends({for (final f in friends.friends) f.uid: f.username});
     await createService.loadStats(firestore, uid);
   }
 
@@ -181,8 +237,8 @@ class _CreatePageState extends State<CreatePage> {
       } else {
         posted = await createPost(firestore, user, prompt, text);
         if (!mounted) return;
-        Provider.of<PromptService>(context, listen: false).setPostForPrompt(
-            prompt.promptDateId!, prompt.promptId!, posted);
+        Provider.of<PromptService>(context, listen: false)
+            .setPostForPrompt(prompt.promptDateId!, prompt.promptId!, posted);
         await cachePost(firestore, user, posted);
       }
       createService.markPosted(i, posted);
@@ -336,6 +392,15 @@ class _CreatePageState extends State<CreatePage> {
                         itemCount: createService.length,
                         onPageChanged: onPageChanged,
                         itemBuilder: (context, i) => PromptCard(
+                          onHold: isFriendPrompt(createService.prompts[i]) &&
+                                  createService.creatorFor(i).uid !=
+                                      Provider.of<SessionService>(context,
+                                              listen: false)
+                                          .loggedInUser
+                                          ?.uid
+                              ? () => _openPromptMenu(createService.prompts[i],
+                                  createService.creatorFor(i))
+                              : null,
                           prompt: createService.prompts[i],
                           creator: createService.creatorFor(i),
                           mine: createService.creatorFor(i).uid ==
@@ -383,9 +448,9 @@ class _CreatePageState extends State<CreatePage> {
               child: createService.streak > 0
                   ? StreakChip(
                       days: createService.streak,
-                      onTap: () =>
-                          showStreakSheet(context, createService.streak,
-                              sample: createService.usingSamples))
+                      onTap: () => showStreakSheet(
+                          context, createService.streak,
+                          sample: createService.usingSamples))
                   : const SizedBox(),
             ),
           ),

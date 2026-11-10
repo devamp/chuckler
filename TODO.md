@@ -179,7 +179,7 @@ An image with no text prompt; people write the caption. Builds on the caption no
 - **Friends lists by uid.** *Done in the emulator (slice 3):* `Friends` and `FriendRequests` by uid, requests by username or email, and a Friends screen on the Account tab. *Friends who answered* is live on the Create tab (a `Posts` query per prompt, `uid in` the user's friends, 30 at a time). *Friend streak standings* are live too (friends can read each other's `FriendView`). Still to do: opening a friend's profile, and moving the Past feed popup off the old username lists on `Users`.
 - **One vote per user per matchup**, e.g. `Votes/{matchupId}_{uid}`, with totals derived from those. Firestore rules can allow create but not update, which enforces "votes are final" on the server.
 - **Blaze plan before launch.** Matchups, ranking, checkpoints and AI prompt generation all need Cloud Functions. At this scale usage should stay within the free quotas; set a budget alert.
-- **Moderation for user-generated content.** Friend-created prompts and answers need report, block and filtering to satisfy App Store Review guideline 1.2.
+- **Moderation for user-generated content.** *Done in the emulator:* report and block by holding answers, prompts, comments and people; auto-hiding after 3 reports (1 with a listed word); a per-user content filter and a username word check; the signup agreement. Still to do: an in-app or emailed alert when reports arrive (Apple expects action within 24 hours; review `Reports`/`Moderation` in the console until then), reporting a top answer on the Leaderboard directly, and a published support contact (`supportEmail`).
 - **AI-generated prompts** run server-side (a Cloud Function) so the API key never ships in the app.
 
 ## Local (after launch)

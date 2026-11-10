@@ -7,6 +7,7 @@ import 'create_service.dart';
 import 'feed_service.dart';
 import 'friends_service.dart';
 import 'leaderboard_service.dart';
+import 'moderation_service.dart';
 import 'prompt_service.dart';
 import 'session_service.dart';
 import 'voting_service.dart';
@@ -26,6 +27,7 @@ class _UserState {
           Provider.of<AccountService>(context, listen: false).logout,
           Provider.of<LeaderboardService>(context, listen: false).logout,
           Provider.of<FeedService>(context, listen: false).logout,
+          Provider.of<ModerationService>(context, listen: false).logout,
           // last: many screens read the signed-in user with `!`
           Provider.of<SessionService>(context, listen: false).logout,
         ],

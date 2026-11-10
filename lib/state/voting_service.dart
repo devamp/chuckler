@@ -25,7 +25,20 @@ class VotingService with ChangeNotifier {
   Set<String> get hiddenPrompts => Set.unmodifiable(_hidden);
 
   bool _shows(MatchupFilter f, Matchup m) =>
-      f.shows(m) && !_hidden.contains(m.promptId);
+      f.shows(m) &&
+      !_hidden.contains(m.promptId) &&
+      !(_exclude?.call(m) ?? false);
+
+  /// Matchups the user shouldn't see (reported, blocked users', filtered
+  /// words), from ModerationService
+  bool Function(Matchup m)? _exclude;
+
+  /// Sets what to keep out of the queue. Call [refilter] when it changes.
+  set exclude(bool Function(Matchup m)? f) => _exclude = f;
+
+  /// Rebuilds the queue after a report, block or filter change, keeping
+  /// the place (the next matchup slides into a removed one's spot)
+  void refilter() => _requeue();
   int get index => _index;
   int get length => _queue.length;
 

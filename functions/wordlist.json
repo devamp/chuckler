@@ -1,0 +1,87 @@
+{
+  "_comment": "Words grouped by category. Usernames may not contain any of them (signup refuses). For answers, comments and prompts the categories are a viewer setting: Settings > Content filter hides content with words from the categories a user turns on (new users: slurs and sexual on, profanity off). One report on content with a listed word hides it for everyone. Shared by functions/moderation.js and the app (lib/data/moderation.dart). Whole words only, after lowercasing and undoing letter swaps (0->o, 1->i, 3->e, 4->a, 5->s, @->a, $->s); a trailing s/es/ed/ing also matches.",
+  "categories": {
+    "slurs": {
+      "label": "Hate speech & slurs",
+      "defaultOn": true,
+      "words": [
+        "nigger",
+        "nigga",
+        "chink",
+        "gook",
+        "spic",
+        "wetback",
+        "kike",
+        "beaner",
+        "raghead",
+        "towelhead",
+        "coon",
+        "jigaboo",
+        "porchmonkey",
+        "zipperhead",
+        "faggot",
+        "fag",
+        "dyke",
+        "tranny",
+        "shemale",
+        "retard",
+        "retarded",
+        "kys",
+        "killyourself"
+      ]
+    },
+    "sexual": {
+      "label": "Sexual content",
+      "defaultOn": true,
+      "words": [
+        "rape",
+        "rapist",
+        "molest",
+        "molester",
+        "pedo",
+        "pedophile",
+        "paedophile",
+        "cunt",
+        "whore",
+        "slut",
+        "porn",
+        "porno",
+        "pornhub",
+        "blowjob",
+        "handjob",
+        "rimjob",
+        "cumshot",
+        "jizz",
+        "dildo",
+        "masturbate",
+        "pussy",
+        "nudes",
+        "hentai"
+      ]
+    },
+    "profanity": {
+      "label": "Strong language",
+      "defaultOn": false,
+      "words": [
+        "fuck",
+        "fucker",
+        "fucking",
+        "motherfucker",
+        "shit",
+        "shitty",
+        "bullshit",
+        "bitch",
+        "asshole",
+        "bastard",
+        "dickhead",
+        "piss",
+        "pissed",
+        "prick",
+        "twat",
+        "wanker",
+        "bollocks",
+        "goddamn"
+      ]
+    }
+  }
+}

@@ -11,6 +11,7 @@ import 'package:chuckler/state/friends_service.dart';
 import 'package:chuckler/data/awards.dart';
 import 'dart:io';
 import 'package:chuckler/state/session_service.dart';
+import 'package:chuckler/state/moderation_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -58,6 +59,7 @@ void main() {
           ..setLoggedInUser(DbUser('u1', username, 0, 0, ''));
         await tester.pumpWidget(MultiProvider(
           providers: [
+            ChangeNotifierProvider(create: (_) => ModerationService()),
             ChangeNotifierProvider.value(value: session),
             ChangeNotifierProvider.value(value: FriendsService()),
             ChangeNotifierProvider.value(
@@ -88,6 +90,7 @@ void main() {
       ..setLoggedInUser(DbUser('u1', 'ava', 0, 0, ''));
     await tester.pumpWidget(MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => ModerationService()),
         ChangeNotifierProvider.value(value: session),
         ChangeNotifierProvider.value(value: FriendsService()),
         ChangeNotifierProvider.value(

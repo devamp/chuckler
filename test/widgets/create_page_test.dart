@@ -15,6 +15,7 @@ import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:chuckler/data/friend_prompts.dart' show isFriendPrompt;
+import 'package:chuckler/state/moderation_service.dart';
 import 'package:provider/provider.dart';
 import 'fonts.dart';
 
@@ -50,6 +51,7 @@ void main() {
     if (loggedIn) session.setLoggedInUser(DbUser('me', 'caden', 0, 0, ''));
     await tester.pumpWidget(MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => ModerationService()),
         ChangeNotifierProvider.value(value: session),
         ChangeNotifierProvider.value(value: promptService),
         ChangeNotifierProvider.value(value: create),

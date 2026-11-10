@@ -13,6 +13,7 @@ import 'package:chuckler/pages/accountpage/account_notifications.dart';
 import 'package:chuckler/state/account_service.dart';
 import 'package:chuckler/state/friends_service.dart';
 import 'package:chuckler/state/session_service.dart';
+import 'package:chuckler/state/moderation_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -74,6 +75,7 @@ Future<FakeFirebaseFirestore> pumpAccount(WidgetTester tester, Size size,
     ..setLoggedInUser(DbUser('u1', username, 0, 0, ''));
   await tester.pumpWidget(MultiProvider(
     providers: [
+      ChangeNotifierProvider(create: (_) => ModerationService()),
       ChangeNotifierProvider.value(value: session),
       ChangeNotifierProvider.value(value: FriendsService()),
       ChangeNotifierProvider.value(

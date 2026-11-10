@@ -11,6 +11,8 @@ const {
 } = require("./profile");
 const {finishDay} = require("./results");
 const {deleteUserData} = require("./account");
+const {noteBlockedMatchup, applyBlock, handleReport} =
+    require("./moderation");
 const functionsV1 = require("firebase-functions/v1");
 initializeApp();
 const db = getFirestore();
@@ -52,7 +54,7 @@ exports.createMatchup = onDocumentCreated("Posts/{postId}", async (event) => {
   const postId = event.params.postId;
   const postRef = event.data.ref;
   try {
-    await db.runTransaction(async (tx) => {
+    const made = await db.runTransaction(async (tx) => {
       const post = (await tx.get(postRef)).data();
       // already handled (a retried event)
       if (!post || post.matched !== undefined) return;
@@ -110,7 +112,10 @@ exports.createMatchup = onDocumentCreated("Posts/{postId}", async (event) => {
           "counts.matchups": FieldValue.increment(1),
         });
       }
+      return {id: matchupRef.id, uids: [otherPost.uid, post.uid]};
     });
+    // people who blocked either author don't get it in their queue
+    if (made) await noteBlockedMatchup(db, made.id, made.uids);
   } catch (e) {
     console.log(`createMatchup: ${postId}: ${e}`);
   }
@@ -356,3 +361,34 @@ exports.onAccountDeleted = functionsV1.auth.user().onDelete(async (user) => {
     console.log(`onAccountDeleted ${user.uid}: ${e}`);
   }
 });
+
+// onBlockCreated: when a user blocks someone they stop being friends,
+// requests between them go, and the blocked user's open matchups leave the
+// blocker's queue (Private/blockedContent). The blocked user isn't told.
+exports.onBlockCreated = onDocumentCreated(
+    "Users/{uid}/Blocked/{other}", async (event) => {
+      const {uid, other} = event.params;
+      const today = promptDayId(new Date());
+      try {
+        const n = await applyBlock(db, uid, other, today, addDays(today, -1));
+        console.log(`onBlockCreated ${uid} blocked ${other}: ${n} matchups`);
+      } catch (e) {
+        console.log(`onBlockCreated ${uid}/${other}: ${e}`);
+      }
+    });
+
+// onReportCreated counts distinct reporters per target in
+// Moderation/{type}_{id} and hides the content at 3 reporters, or at once
+// when its text has a listed word. Review Reports and Moderation in the
+// console; Apple expects a response within 24 hours.
+exports.onReportCreated = onDocumentCreated(
+    "Reports/{reportId}", async (event) => {
+      const report = event.data.data() || {};
+      try {
+        const result = await handleReport(db, report);
+        console.log(`onReportCreated ${event.params.reportId}: ` +
+            JSON.stringify(result));
+      } catch (e) {
+        console.log(`onReportCreated ${event.params.reportId}: ${e}`);
+      }
+    });

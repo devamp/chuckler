@@ -36,6 +36,9 @@ class PromptCard extends StatelessWidget {
   /// drops the stats strip, for when the keyboard is up
   final bool compact;
 
+  /// holding the card (a friend's prompt): report it or block its creator
+  final VoidCallback? onHold;
+
   const PromptCard({
     super.key,
     required this.prompt,
@@ -49,6 +52,7 @@ class PromptCard extends StatelessWidget {
     required this.liked,
     required this.onLike,
     this.compact = false,
+    this.onHold,
   });
 
   @override
@@ -56,94 +60,97 @@ class PromptCard extends StatelessWidget {
     final width = MediaQuery.sizeOf(context).width;
     final awaiting = isAwaitingPrompt(prompt);
 
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: width / 30, vertical: 6),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.black54,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-            color: answered ? Colors.amberAccent : Colors.black26,
-            width: answered ? 4 : 3),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (!awaiting)
-            Row(
-              children: [
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: CreatorHeader(
-                        creator: creator,
-                        segment: segmentOf(prompt),
-                        isMe: mine),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Align(
-                    alignment: Alignment.topRight,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        answered
-                            ? const _Tag(
-                                text: 'Answered',
-                                color: Colors.amberAccent,
-                                icon: Icons.check_circle)
-                            : _Tag(
-                                text: timeLeftLabel(now),
-                                color: Colors.white70,
-                                icon: Icons.timer_outlined),
-                        if (isSamplePrompt(prompt)) ...[
-                          const SizedBox(height: 4),
-                          const _Tag(text: 'Sample', color: Colors.white54),
-                        ],
-                      ],
+    return GestureDetector(
+      onLongPress: onHold,
+      child: Container(
+        margin: EdgeInsets.symmetric(horizontal: width / 30, vertical: 6),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.black54,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+              color: answered ? Colors.amberAccent : Colors.black26,
+              width: answered ? 4 : 3),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (!awaiting)
+              Row(
+                children: [
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: CreatorHeader(
+                          creator: creator,
+                          segment: segmentOf(prompt),
+                          isMe: mine),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Align(
+                      alignment: Alignment.topRight,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          answered
+                              ? const _Tag(
+                                  text: 'Answered',
+                                  color: Colors.amberAccent,
+                                  icon: Icons.check_circle)
+                              : _Tag(
+                                  text: timeLeftLabel(now),
+                                  color: Colors.white70,
+                                  icon: Icons.timer_outlined),
+                          if (isSamplePrompt(prompt)) ...[
+                            const SizedBox(height: 4),
+                            const _Tag(text: 'Sample', color: Colors.white54),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            Expanded(
+              child: Center(
+                child: AutoSizeText.rich(
+                  TextSpan(
+                    style: const TextStyle(
+                        fontSize: 30,
+                        color: Colors.white,
+                        fontFamily: 'OpenSans'),
+                    children: [
+                      TextSpan(text: prompt.before),
+                      answer.trim().isEmpty
+                          ? const TextSpan(
+                              text: '____________',
+                              style: TextStyle(color: Colors.amber))
+                          : TextSpan(
+                              text: answer,
+                              style: const TextStyle(color: answerColor)),
+                      TextSpan(text: prompt.after),
+                    ],
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 8,
+                  minFontSize: 10,
                 ),
-              ],
-            ),
-          Expanded(
-            child: Center(
-              child: AutoSizeText.rich(
-                TextSpan(
-                  style: const TextStyle(
-                      fontSize: 30,
-                      color: Colors.white,
-                      fontFamily: 'OpenSans'),
-                  children: [
-                    TextSpan(text: prompt.before),
-                    answer.trim().isEmpty
-                        ? const TextSpan(
-                            text: '____________',
-                            style: TextStyle(color: Colors.amber))
-                        : TextSpan(
-                            text: answer,
-                            style: const TextStyle(color: answerColor)),
-                    TextSpan(text: prompt.after),
-                  ],
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 8,
-                minFontSize: 10,
               ),
             ),
-          ),
-          if (!compact && !awaiting)
-            PromptStatsStrip(
-              stats: stats,
-              likes: likes,
-              liked: liked,
-              onLike: onLike,
-              onFriends: () =>
-                  showFriendsAnswered(context, stats?.friendsAnswered ?? []),
-            ),
-        ],
+            if (!compact && !awaiting)
+              PromptStatsStrip(
+                stats: stats,
+                likes: likes,
+                liked: liked,
+                onLike: onLike,
+                onFriends: () =>
+                    showFriendsAnswered(context, stats?.friendsAnswered ?? []),
+              ),
+          ],
+        ),
       ),
     );
   }

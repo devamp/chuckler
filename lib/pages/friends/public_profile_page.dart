@@ -7,6 +7,8 @@ import '../../data/friends.dart';
 import '../../data/prompt_day.dart';
 import '../../state/friends_service.dart';
 import '../../state/session_service.dart';
+import '../../state/moderation_service.dart';
+import '../../CustomReusableWidgets/moderation_sheets.dart';
 import '../accountpage/account.dart' show HeaderStat;
 import '../createpage/create_stats.dart' show FriendAvatar;
 
@@ -158,6 +160,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
   @override
   Widget build(BuildContext context) {
     Provider.of<FriendsService>(context); // rebuild when friends change
+    final moderation = Provider.of<ModerationService>(context);
     final relation = _relation();
     final photo =
         _them?.photoUrl.isNotEmpty == true ? _them!.photoUrl : widget.photoUrl;
@@ -171,24 +174,44 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
         children: [
-          Center(
-            child: photo.isNotEmpty
-                ? CircleAvatar(radius: 52, backgroundImage: NetworkImage(photo))
-                : FriendAvatar(
-                    username: widget.username,
-                    index: widget.username.codeUnits.fold(0, (a, b) => a + b),
-                    radius: 52),
+          // hold their photo or name to report or block them
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onLongPress: _them == null || relation == ProfileRelation.you
+                ? null
+                : () => showHoldMenu(context,
+                    actions: personActions(context,
+                        username: _them!.username,
+                        uid: _them!.uid,
+                        photoUrl: photo)),
+            child: Column(
+              children: [
+                Center(
+                  child: photo.isNotEmpty
+                      ? CircleAvatar(
+                          radius: 52, backgroundImage: NetworkImage(photo))
+                      : FriendAvatar(
+                          username: widget.username,
+                          index: widget.username.codeUnits
+                              .fold(0, (a, b) => a + b),
+                          radius: 52),
+                ),
+                const SizedBox(height: 14),
+                Text(widget.username,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontFamily: 'OpenSans',
+                        fontWeight: FontWeight.bold,
+                        fontSize: 24)),
+              ],
+            ),
           ),
-          const SizedBox(height: 14),
-          Text(widget.username,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontFamily: 'OpenSans',
-                  fontWeight: FontWeight.bold,
-                  fontSize: 24)),
           const SizedBox(height: 20),
-          Center(child: _action(relation)),
+          Center(
+              child: _them != null && moderation.isBlocked(_them!.uid)
+                  ? _blockedAction(_them!)
+                  : _action(relation)),
           if (_message != null)
             Padding(
               padding: const EdgeInsets.only(top: 12),
@@ -208,6 +231,27 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                     TextStyle(color: Colors.white54, fontFamily: 'OpenSans')),
         ],
       ),
+    );
+  }
+
+  /// For someone the user blocked: say so, with Unblock
+  Widget _blockedAction(FriendCard them) {
+    return Column(
+      children: [
+        const Text("You've blocked this account.",
+            style: TextStyle(color: Colors.white70, fontFamily: 'OpenSans')),
+        TextButton(
+          onPressed: () async {
+            final me = _session.loggedInUser?.uid ?? '';
+            await Provider.of<ModerationService>(context, listen: false)
+                .unblock(Provider.of<FirebaseFirestore>(context, listen: false),
+                    me, them.uid);
+          },
+          child: const Text('Unblock',
+              style: TextStyle(
+                  color: Colors.amberAccent, fontWeight: FontWeight.bold)),
+        ),
+      ],
     );
   }
 

@@ -20,6 +20,9 @@ class VoteCard extends StatefulWidget {
   final void Function(VoteType type) onVote;
   final VoidCallback onOpenComments;
 
+  /// holding the card: report it, or block its author
+  final VoidCallback? onHold;
+
   const VoteCard({
     super.key,
     required this.answer,
@@ -30,6 +33,7 @@ class VoteCard extends StatefulWidget {
     required this.pickPercent,
     required this.onVote,
     required this.onOpenComments,
+    this.onHold,
   });
 
   @override
@@ -94,6 +98,7 @@ class _VoteCardState extends State<VoteCard>
     return GestureDetector(
       onHorizontalDragUpdate: _onDragUpdate,
       onHorizontalDragEnd: _onDragEnd,
+      onLongPress: widget.onHold,
       onTap: _voted ? widget.onOpenComments : null,
       child: Transform.translate(
         offset: Offset(_dx, 0),

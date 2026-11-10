@@ -107,6 +107,30 @@ service cloud.firestore {
           && d.get('likedBy', []) == [];
     }
 
+    // ---- Reports -------------------------------------------------------
+
+    // Anyone signed in can report content or a person; nobody can read or
+    // change reports from the app. onReportCreated counts them in
+    // Moderation (no client access) and hides content past a threshold.
+    match /Reports/{id} {
+      allow create: if signedIn() && isReport(request.resource.data);
+      allow read, update, delete: if false;
+    }
+
+    function isReport(d) {
+      return d.keys().hasOnly(['reporter', 'targetType', 'targetId', 'postId',
+              'matchupId', 'commentId', 'reason', 'note', 'at'])
+          && d.reporter == request.auth.uid
+          && d.targetType in ['answer', 'comment', 'prompt', 'user']
+          && d.targetId is string && d.targetId.size() > 0
+          && d.targetId.size() <= 200
+          && d.reason in ['offensive', 'harassment', 'sexual', 'spam', 'other']
+          && d.get('note', '') is string && d.get('note', '').size() <= 300
+          && d.get('postId', '') is string && d.get('matchupId', '') is string
+          && d.get('commentId', '') is string
+          && d.at == request.time;
+    }
+
     // ---- Leaderboards --------------------------------------------------
 
     // The global boards: a daily snapshot written by the server (finishDay)
@@ -178,11 +202,28 @@ service cloud.firestore {
       // Friend requests sent by username. Only the sender writes theirs,
       // under their own uid; the recipient reads them and declines by
       // deleting; the sender can cancel.
+      // People this user blocked. Only they see the list; onBlockCreated
+      // unfriends them and keeps the blocked user's matchups out of the
+      // queue. The blocked user isn't told.
+      match /Blocked/{other} {
+        allow read, delete: if isUser(uid);
+        allow create: if isUser(uid) && other != uid
+            && request.resource.data.keys().hasOnly(['uid', 'username', 'photoUrl', 'at'])
+            && request.resource.data.uid == other
+            && request.resource.data.username is string
+            && request.resource.data.get('photoUrl', '') is string
+            && request.resource.data.at == request.time;
+        allow update: if false;
+      }
+
       match /FriendRequests/{fromUid} {
         allow read: if isUser(uid);
         allow create: if isUser(fromUid) && fromUid != uid && uid != 'chuckler'
             && exists(/databases/$(database)/documents/Users/$(uid))
             && !exists(/databases/$(database)/documents/Users/$(uid)/Friends/$(fromUid))
+            // neither has blocked the other
+            && !exists(/databases/$(database)/documents/Users/$(uid)/Blocked/$(fromUid))
+            && !exists(/databases/$(database)/documents/Users/$(fromUid)/Blocked/$(uid))
             && isRequestCard(fromUid);
         allow delete: if isUser(uid) || isUser(fromUid);
       }

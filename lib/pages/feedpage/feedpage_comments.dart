@@ -4,6 +4,9 @@ import 'package:provider/provider.dart';
 import '../../data/comments.dart';
 import '../../data/matchups.dart';
 import '../../state/session_service.dart';
+import '../../state/moderation_service.dart';
+import '../../data/moderation.dart';
+import '../../CustomReusableWidgets/moderation_sheets.dart';
 import '../createpage/create_stats.dart' show FriendAvatar;
 
 /// Opens the comment thread of one answer. Threads belong to the answer, not
@@ -126,7 +129,15 @@ class _AnswerCommentsSheetState extends State<AnswerCommentsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final comments = _thread?.comments ?? const <AnswerComment>[];
+    // comments from people the user blocked, ones they reported and ones
+    // with words they filter out stay hidden
+    final moderation = Provider.of<ModerationService>(context);
+    final comments = [
+      for (final c in _thread?.comments ?? const <AnswerComment>[])
+        if (!moderation.hidesComment(
+            id: c.id, uid: c.uid, username: c.username, text: c.text))
+          c,
+    ];
     final media = MediaQuery.of(context);
     // about half the screen, so the matchup stays visible above it and a tap
     // there or a drag down closes it; the keyboard pushes it up
@@ -220,55 +231,82 @@ class _AnswerCommentsSheetState extends State<AnswerCommentsSheet> {
       itemCount: comments.length,
       itemBuilder: (context, i) {
         final c = comments[i];
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              FriendAvatar(
-                  username: c.username,
-                  index: c.username.codeUnits.fold(0, (a, b) => a + b),
-                  radius: 16),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(c.username,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onLongPress: () => _openCommentMenu(c),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                FriendAvatar(
+                    username: c.username,
+                    index: c.username.codeUnits.fold(0, (a, b) => a + b),
+                    radius: 16),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(c.username,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontFamily: 'OpenSans',
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14)),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(commentAge(c.at, now),
                               style: const TextStyle(
-                                  color: Colors.white,
+                                  color: Colors.white38,
                                   fontFamily: 'OpenSans',
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14)),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(commentAge(c.at, now),
-                            style: const TextStyle(
-                                color: Colors.white38,
-                                fontFamily: 'OpenSans',
-                                fontSize: 12)),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(c.text,
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontFamily: 'OpenSans',
-                            fontSize: 15,
-                            height: 1.3)),
-                  ],
+                                  fontSize: 12)),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(c.text,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontFamily: 'OpenSans',
+                              fontSize: 15,
+                              height: 1.3)),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
     );
+  }
+
+  /// Holding someone else's comment: report it or block them
+  Future<void> _openCommentMenu(AnswerComment c) async {
+    final me =
+        Provider.of<SessionService>(context, listen: false).loggedInUser?.uid;
+    if (c.uid == me) return;
+    await showHoldMenu(context, header: quoteHeader(c.text), actions: [
+      HoldAction(
+          icon: Icons.flag_outlined,
+          label: 'Report comment',
+          run: () => reportFlow(context,
+              what: 'comment',
+              target: ReportTarget.comment,
+              targetId: c.id,
+              postId: _thread?.postId,
+              matchupId: widget.matchup.id)),
+      HoldAction(
+          icon: Icons.block,
+          label: 'Block ${c.username}',
+          danger: true,
+          run: () => blockFlow(context, username: c.username, uid: c.uid)),
+    ]);
   }
 
   Widget _composer() {

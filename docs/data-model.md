@@ -44,6 +44,10 @@ Users/{uid}                           ANYONE: { username, photoUrl }
   FriendView/profile                  FRIENDS + YOU: bio, stats, streak
   Private/account                     YOU: age, notification settings, push tokens, blocked uids
   Private/hiddenPrompts               YOU: { dayId, promptIds } prompts hidden from your Home queue today
+  Private/reported                    YOU: { matchupIds, commentIds, promptIds } what you reported (hidden for you)
+  Private/blockedContent              SERVER: { matchupIds } matchups with blocked users' answers, kept out of your queue
+  Private/settings                    YOU: { contentFilter: [categories] } word categories you hide
+  Blocked/{otherUid}                  YOU: { uid, username, photoUrl, at } people you blocked
   Friends/{friendUid}                 YOU: { username, photoUrl, since }
   FriendRequests/{fromUid}            YOU: { username, photoUrl, sentAt }   sent by username
   History/{yyyy-MM}                   FRIENDS + YOU: your answers that month
@@ -70,6 +74,9 @@ Votes/{matchupId}_{uid}               one per user per matchup; create only
 Dislikes/{targetId}_{uid}             one per user per answer or prompt; readable only by its creator
 
 Leaderboards/{board}                  ANY SIGNED-IN USER: a daily snapshot of a global board; server only
+
+Reports/{id}                          create-only, nobody reads from the app: { reporter, targetType, targetId, postId?, matchupId?, commentId?, reason, note?, at }
+Moderation/{targetType}_{targetId}    SERVER ONLY: distinct reporters, count, status (open | hidden), reasons
 ```
 
 ### Users
@@ -274,6 +281,8 @@ To dislike, the app writes one batch:
 | Send a friend request | `FriendRequests/{me}` under them (by username), or `EmailRequests/{hash}/From/{me}` (by email) | |
 | Accept a friend | `Friends` docs on both sides + delete the request, one batch | |
 | Create a friend prompt | `FriendPrompts/{id}` (before, after, creator, no audience) | `audience` from the creator's friends |
+| Report | `Reports/{id}` + `Private/reported` | `Moderation` count; hides the content past the threshold |
+| Block | `Blocked/{other}` | unfriend both ways, delete requests, `Private/blockedContent` |
 | Delete account | (re-enter password) the Auth account is deleted | `onAccountDeleted`: the Users tree, username claim, friends' entries, sent requests, posts with their matchups, friend prompts, votes, dislikes, comments, leaderboard rows |
 | A prompt day ends | | its `Results` pages, `final` stats in each author's `History`, a results notification each, the global `Leaderboards` |
 
@@ -344,6 +353,12 @@ Account tab:
 - Notifications (`Users/{uid}/Notifications`) and achievements (`awards` on the profile), as above. Daily results run by script in the emulator.
 
 Friend prompts: `FriendPrompts/{uid}_{dayId}` with the audience set by `onFriendPromptCreated` (which also notifies each friend); answers are `Posts` with `promptSource: "friends"`; `createMatchup` gives their matchups `scope: "friends"` and the prompt's `audience`. The Create tab lists today's friend prompts (an `audience array-contains` query plus a direct read of your own) after the daily ones; Home's Friends filter shows their matchups.
+
+Moderation (App Store guideline 1.2):
+- **Hold to act.** Holding an answer card, the Home prompt, a comment, a friend's prompt card on Create, a profile header or a leaderboard row opens a menu: hide (prompts), **Report**, **Block**. Reasons: offensive, harassment, sexual, spam, other.
+- **Report** writes `Reports/{id}` and adds the item to `Private/reported`, so it's hidden for the reporter at once. `onReportCreated` keeps `Moderation/{type}_{id}` (distinct reporters) and hides the content at 3 reporters, or at 1 when its text has a listed word: an answer's post and matchups get `status: "hidden"`, a comment is deleted, a friend prompt gets `status: "hidden"`. People are never hidden automatically. Review `Reports` and `Moderation` in the console.
+- **Block** writes `Blocked/{other}`. `onBlockCreated` removes both `Friends` docs and requests either way, and lists the blocked user's open matchups in `Private/blockedContent`. `createMatchup` adds new matchups to the `blockedContent` of anyone who blocked an author (a collection-group query on `Blocked.uid`), so matchups stay anonymous. Requests across a block are refused by the rules. Blocked users' comments and friend prompts are hidden in the app. Unblock in Settings.
+- **Word list** (`functions/wordlist.json`, bundled in the app): categories slurs, sexual and profanity. Usernames may not contain any listed word. For answers, comments and prompts it's a viewer setting (Settings > Content filter; slurs and sexual on by default) that hides matching content for that user only.
 
 Hiding a prompt (Home): holding the prompt above a matchup offers "Hide this prompt", which takes all of that prompt's matchups out of the queue (with Undo) and saves `Private/hiddenPrompts` `{dayId, promptIds}`. Only the current day's list is kept, since prompts last a day. Home reads it with the matchups (1 read). The Create tab ignores it, and the prompt's creator isn't told.
 

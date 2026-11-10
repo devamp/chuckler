@@ -120,8 +120,7 @@ class AwardBadge extends StatelessWidget {
                     const Positioned(
                       right: -4,
                       bottom: -2,
-                      child:
-                          Icon(Icons.lock, size: 16, color: Colors.white54),
+                      child: Icon(Icons.lock, size: 16, color: Colors.white54),
                     ),
                 ],
               ),
