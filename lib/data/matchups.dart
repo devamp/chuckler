@@ -287,3 +287,32 @@ Future<void> castVote(FirebaseFirestore firestore, String uid,
   }
   await batch.commit();
 }
+
+/// The prompts the user hid from their Home queue: Private/hiddenPrompts,
+/// `{dayId, promptIds}`. Prompts last a day, so it holds only one day's
+/// list; a list from an earlier day reads as empty and is replaced on the
+/// next hide. Only the Home tab uses it: the Create tab still shows them.
+DocumentReference<Map<String, dynamic>> hiddenPromptsRef(
+        FirebaseFirestore firestore, String uid) =>
+    firestore
+        .collection('Users')
+        .doc(uid)
+        .collection('Private')
+        .doc('hiddenPrompts');
+
+/// The prompt ids hidden for [dayId] (one read)
+Future<Set<String>> getHiddenPrompts(
+    FirebaseFirestore firestore, String uid, String dayId) async {
+  final data = (await hiddenPromptsRef(firestore, uid).get()).data();
+  if (data == null || data['dayId'] != dayId) return {};
+  return {...((data['promptIds'] as List?) ?? const []).whereType<String>()};
+}
+
+/// Saves the prompts hidden for [dayId], replacing any earlier day's list
+Future<void> saveHiddenPrompts(FirebaseFirestore firestore, String uid,
+    String dayId, Set<String> promptIds) {
+  return hiddenPromptsRef(firestore, uid).set({
+    'dayId': dayId,
+    'promptIds': promptIds.toList()..sort(),
+  });
+}

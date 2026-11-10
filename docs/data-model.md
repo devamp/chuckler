@@ -43,6 +43,7 @@ Users/{uid}                           ANYONE: { username, photoUrl }
                                       official accounts add: kind, bio (public)
   FriendView/profile                  FRIENDS + YOU: bio, stats, streak
   Private/account                     YOU: age, notification settings, push tokens, blocked uids
+  Private/hiddenPrompts               YOU: { dayId, promptIds } prompts hidden from your Home queue today
   Friends/{friendUid}                 YOU: { username, photoUrl, since }
   FriendRequests/{fromUid}            YOU: { username, photoUrl, sentAt }   sent by username
   History/{yyyy-MM}                   FRIENDS + YOU: your answers that month
@@ -342,6 +343,8 @@ Account tab:
 - Notifications (`Users/{uid}/Notifications`) and achievements (`awards` on the profile), as above. Daily results run by script in the emulator.
 
 Friend prompts: `FriendPrompts/{uid}_{dayId}` with the audience set by `onFriendPromptCreated` (which also notifies each friend); answers are `Posts` with `promptSource: "friends"`; `createMatchup` gives their matchups `scope: "friends"` and the prompt's `audience`. The Create tab lists today's friend prompts (an `audience array-contains` query plus a direct read of your own) after the daily ones; Home's Friends filter shows their matchups.
+
+Hiding a prompt (Home): holding the prompt above a matchup offers "Hide this prompt", which takes all of that prompt's matchups out of the queue (with Undo) and saves `Private/hiddenPrompts` `{dayId, promptIds}`. Only the current day's list is kept, since prompts last a day. Home reads it with the matchups (1 read). The Create tab ignores it, and the prompt's creator isn't told.
 
 Leaderboard tab:
 - Friends boards are worked out in the app from each friend's `FriendView/profile` (stats, `week`, streak) and the History month holding yesterday (`final` stats), about 4 reads per friend, once per session. Weekly counts whose `week.start` isn't this week read as zero.

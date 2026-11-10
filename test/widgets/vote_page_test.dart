@@ -700,4 +700,57 @@ void main() {
       expect(voting.index, 0);
     });
   });
+
+  testWidgets('holding the prompt hides it, saves it, and Undo brings it back',
+      (tester) async {
+    await pumpVotePage(tester);
+    final prompt = find.textContaining('your pilot say', findRichText: true);
+    await tester.longPress(prompt.first);
+    await tester.pumpAndSettle();
+    expect(find.text('Hide this prompt'), findsOneWidget);
+
+    await tester.tap(find.text('Hide this prompt'));
+    await tester.pump();
+    await tester.runAsync(
+        () => Future.delayed(const Duration(milliseconds: 50)));
+    await tester.pumpAndSettle();
+    // both pilot matchups are gone; the roommate one is up
+    expect(answer('narrating their own life in the third person'),
+        findsOneWidget);
+    expect(voting.length, 3);
+    expect(find.text('Prompt hidden'), findsOneWidget);
+    final saved = await tester.runAsync(
+        () => firestore.doc('Users/me/Private/hiddenPrompts').get());
+    expect(saved!.data()!['promptIds'], ['pilot']);
+
+    await tester.tap(find.text('Undo'));
+    await tester.pump();
+    await tester.runAsync(
+        () => Future.delayed(const Duration(milliseconds: 50)));
+    await tester.pumpAndSettle();
+    expect(answer('Anyone know which button is autopilot?'), findsOneWidget);
+    expect(voting.length, 5);
+    final undone = await tester.runAsync(
+        () => firestore.doc('Users/me/Private/hiddenPrompts').get());
+    expect(undone!.data()!['promptIds'], isEmpty);
+  });
+
+  testWidgets('a prompt hidden earlier today stays hidden on reload',
+      (tester) async {
+    await pumpVotePage(tester);
+    await tester.runAsync(() => saveHiddenPrompts(
+        firestore, 'me', voting.current!.promptDateId, {'pilot'}));
+    // pull down on the first matchup to reload
+    final gesture = await tester.startGesture(
+        tester.getCenter(answer('Anyone know which button is autopilot?')));
+    await gesture.moveBy(const Offset(0, 30));
+    await gesture.moveBy(const Offset(0, 200));
+    await gesture.up();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.runAsync(
+        () => Future.delayed(const Duration(milliseconds: 100)));
+    await tester.pumpAndSettle();
+    expect(voting.length, 3);
+    expect(answer('Anyone know which button is autopilot?'), findsNothing);
+  });
 }

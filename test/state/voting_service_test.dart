@@ -215,4 +215,60 @@ void main() {
       expect(MatchupFilter.global.shows(f), isFalse);
     });
   });
+
+  group('hidden prompts', () {
+    // sample prompts in order: pilot, pilot, roommate, roommate, superpower
+    List<String> queue() => [
+          for (int i = 0; i < s.length; i++) s.peek(i - s.index)!.id,
+        ];
+
+    test('hiding takes every matchup for the prompt out of the queue', () {
+      s.setMatchups(sampleMatchups(), {});
+      s.hidePrompt('roommate');
+      expect(queue(), ['sample-1', 'sample-2', 'sample-5']);
+      expect(s.countFor(MatchupFilter.all), 3);
+      expect(s.hiddenPrompts, {'roommate'});
+    });
+
+    test("hiding the current matchup's prompt moves on to the next one", () {
+      s.setMatchups(sampleMatchups(), {});
+      s.next();
+      s.next(); // sample-3, roommate
+      s.hidePrompt('roommate');
+      expect(s.current!.id, 'sample-5');
+      expect(s.index, 2);
+      expect(s.canGoBack, isTrue);
+    });
+
+    test('hiding an earlier prompt keeps the current matchup', () {
+      s.setMatchups(sampleMatchups(), {});
+      s.next();
+      s.next(); // sample-3
+      s.hidePrompt('pilot');
+      expect(s.current!.id, 'sample-3');
+      expect(s.index, 0);
+    });
+
+    test('undo puts them back and returns to the matchup', () {
+      s.setMatchups(sampleMatchups(), {});
+      s.next();
+      s.next();
+      final m = s.current!;
+      s.hidePrompt('roommate');
+      s.unhidePrompt('roommate', current: m);
+      expect(s.current!.id, 'sample-3');
+      expect(s.length, 5);
+    });
+
+    test('hidden prompts load with the queue and stay hidden across filters',
+        () {
+      s.setMatchups(sampleMatchups(), {}, hidden: {'pilot'});
+      expect(s.current!.id, 'sample-3');
+      s.setFilter(MatchupFilter.global);
+      s.setFilter(MatchupFilter.all);
+      expect(queue(), ['sample-3', 'sample-4', 'sample-5']);
+      s.logout();
+      expect(s.hiddenPrompts, isEmpty);
+    });
+  });
 }

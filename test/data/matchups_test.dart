@@ -189,4 +189,16 @@ void main() {
       expect(await getMatchupAuthors(firestore, 'sample-2'), isNull);
     });
   });
+
+  test('hidden prompts are kept for one day', () async {
+    final f = FakeFirebaseFirestore();
+    expect(await getHiddenPrompts(f, 'me', '2026-11-09'), isEmpty);
+    await saveHiddenPrompts(f, 'me', '2026-11-09', {'p2', 'p1'});
+    expect(await getHiddenPrompts(f, 'me', '2026-11-09'), {'p1', 'p2'});
+    // a new day starts empty, and saving replaces the old list
+    expect(await getHiddenPrompts(f, 'me', '2026-11-10'), isEmpty);
+    await saveHiddenPrompts(f, 'me', '2026-11-10', {'p3'});
+    final doc = await f.doc('Users/me/Private/hiddenPrompts').get();
+    expect(doc.data(), {'dayId': '2026-11-10', 'promptIds': ['p3']});
+  });
 }

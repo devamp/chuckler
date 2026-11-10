@@ -1,9 +1,11 @@
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/matchups.dart';
+import '../../data/prompt_day.dart';
 import '../../state/prompt_service.dart';
 import '../../state/session_service.dart';
 import '../../state/voting_service.dart';
@@ -54,8 +56,8 @@ class _VotePageState extends State<VotePage>
   /// With [stay], the page stays at [to] (the refresh hold) instead.
   Future<void> _slideTo(double to,
       {VoidCallback? then, bool stay = false}) async {
-    _slideAnim = Tween<double>(begin: _offset, end: to).animate(
-        CurvedAnimation(parent: _slide, curve: Curves.easeOutCubic));
+    _slideAnim = Tween<double>(begin: _offset, end: to)
+        .animate(CurvedAnimation(parent: _slide, curve: Curves.easeOutCubic));
     await _slide.forward(from: 0);
     if (!mounted) return;
     then?.call();
@@ -137,22 +139,31 @@ class _VotePageState extends State<VotePage>
     }
     FirebaseFirestore firestore =
         Provider.of<FirebaseFirestore>(context, listen: false);
-    String uid = Provider.of<SessionService>(context, listen: false)
-            .loggedInUser
-            ?.uid ??
-        '';
+    String uid =
+        Provider.of<SessionService>(context, listen: false).loggedInUser?.uid ??
+            '';
     final myPostIds = {
       for (final p in Provider.of<PromptService>(context, listen: false)
           .userPostsForPrompts)
         if ((p?.postId ?? '').isNotEmpty) p!.postId!,
     };
     List<Matchup> matchups = [];
+    Set<String> hidden = {};
     try {
-      matchups = await getVotingMatchups(firestore, uid, myPostIds);
+      final results = await Future.wait([
+        getVotingMatchups(firestore, uid, myPostIds),
+        getHiddenPrompts(firestore, uid, promptDayId(DateTime.now().toUtc()))
+            .catchError((Object e) {
+          debugPrint('hidden prompts: $e');
+          return <String>{};
+        }),
+      ]);
+      matchups = results[0] as List<Matchup>;
+      hidden = results[1] as Set<String>;
     } catch (e) {
       debugPrint('matchups: $e');
     }
-    votingService.setMatchups(matchups, myPostIds);
+    votingService.setMatchups(matchups, myPostIds, hidden: hidden);
   }
 
   Future<void> checkTutorial() async {
@@ -214,14 +225,102 @@ class _VotePageState extends State<VotePage>
     if (authors != null) votingService.setAuthors(m, authors);
   }
 
+  /// Holding the prompt opens a menu to hide it from the queue
+  Future<void> openPromptMenu(Matchup m) async {
+    HapticFeedback.mediumImpact();
+    final hide = await showModalBottomSheet<bool>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      backgroundColor: const Color(0xFF1C1C1E),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: Text.rich(
+                TextSpan(children: [
+                  TextSpan(text: m.promptBefore),
+                  const TextSpan(
+                      text: '____', style: TextStyle(color: Colors.amber)),
+                  TextSpan(text: m.promptAfter),
+                ]),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    color: Colors.white70,
+                    fontFamily: 'OpenSans',
+                    fontSize: 15),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.visibility_off_outlined,
+                  color: Colors.white),
+              title: const Text('Hide this prompt',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontFamily: 'OpenSans',
+                      fontWeight: FontWeight.bold)),
+              subtitle: const Text("You won't see matchups for it today.",
+                  style:
+                      TextStyle(color: Colors.white54, fontFamily: 'OpenSans')),
+              onTap: () => Navigator.of(context).pop(true),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (hide == true && mounted) hidePrompt(m);
+  }
+
+  /// Hides [m]'s prompt from the queue, saves it, and offers Undo
+  Future<void> hidePrompt(Matchup m) async {
+    final voting = Provider.of<VotingService>(context, listen: false);
+    final firestore = Provider.of<FirebaseFirestore>(context, listen: false);
+    final uid =
+        Provider.of<SessionService>(context, listen: false).loggedInUser?.uid ??
+            '';
+    final dayId = m.promptDateId.isNotEmpty
+        ? m.promptDateId
+        : promptDayId(DateTime.now().toUtc());
+    Future<void> save() async {
+      try {
+        await saveHiddenPrompts(firestore, uid, dayId, voting.hiddenPrompts);
+      } catch (e) {
+        debugPrint('hide prompt: $e'); // stays hidden for this session
+      }
+    }
+
+    voting.hidePrompt(m.promptId);
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    messenger?.hideCurrentSnackBar();
+    messenger?.showSnackBar(SnackBar(
+      content: const Text('Prompt hidden'),
+      action: SnackBarAction(
+        label: 'Undo',
+        textColor: Colors.amberAccent,
+        onPressed: () {
+          voting.unhidePrompt(m.promptId, current: m);
+          save();
+        },
+      ),
+    ));
+    await save();
+  }
+
   /// Opens the comment thread of one answer
   void openComments(Matchup m, int card) {
     showAnswerComments(context,
         matchup: m,
         card: card,
         accent: answerColors[card],
-        canComment: Provider.of<VotingService>(context, listen: false)
-            .hasVoted(m));
+        canComment:
+            Provider.of<VotingService>(context, listen: false).hasVoted(m));
   }
 
   @override
@@ -281,8 +380,7 @@ class _VotePageState extends State<VotePage>
     return Stack(
       fit: StackFit.expand,
       children: [
-        if (_refreshing || _pullsToRefresh(votingService))
-          refreshIndicator(),
+        if (_refreshing || _pullsToRefresh(votingService)) refreshIndicator(),
         if (_offset > 0 && votingService.canGoBack)
           page(votingService.peek(-1), _offset - height),
         page(m, _offset, current: true),
@@ -360,29 +458,38 @@ class _VotePageState extends State<VotePage>
     double width = MediaQuery.of(context).size.width;
     return Expanded(
       flex: 2,
-      child: Container(
-        width: double.infinity,
-        margin: EdgeInsets.fromLTRB(width / 30, 0, width / 30, 6),
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.amber, width: 5)),
-        child: Center(
-          child: AutoSizeText.rich(
-            TextSpan(
-              style: const TextStyle(
-                  fontSize: 26, color: Colors.white, fontFamily: 'OpenSans'),
-              children: [
-                TextSpan(text: m.promptBefore),
-                const TextSpan(
-                    text: '____________',
-                    style: TextStyle(color: Colors.amber)),
-                TextSpan(text: m.promptAfter),
-              ],
+      child: Semantics(
+        onLongPressHint: 'Hide this prompt',
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onLongPress: () => openPromptMenu(m),
+          child: Container(
+            width: double.infinity,
+            margin: EdgeInsets.fromLTRB(width / 30, 0, width / 30, 6),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.amber, width: 5)),
+            child: Center(
+              child: AutoSizeText.rich(
+                TextSpan(
+                  style: const TextStyle(
+                      fontSize: 26,
+                      color: Colors.white,
+                      fontFamily: 'OpenSans'),
+                  children: [
+                    TextSpan(text: m.promptBefore),
+                    const TextSpan(
+                        text: '____________',
+                        style: TextStyle(color: Colors.amber)),
+                    TextSpan(text: m.promptAfter),
+                  ],
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 4,
+                minFontSize: 10,
+              ),
             ),
-            textAlign: TextAlign.center,
-            maxLines: 4,
-            minFontSize: 10,
           ),
         ),
       ),
@@ -406,7 +513,8 @@ class _VotePageState extends State<VotePage>
             color: Colors.black54, borderRadius: BorderRadius.circular(20)),
         child: Row(
           children: [
-            Icon(Icons.chat_bubble_outline, color: answerColors[card], size: 18),
+            Icon(Icons.chat_bubble_outline,
+                color: answerColors[card], size: 18),
             const SizedBox(width: 8),
             Text(
                 answer.commentCount == 0
@@ -494,7 +602,8 @@ class _VotePageState extends State<VotePage>
               onPressed: () => loadMatchups(force: true),
               icon: const Icon(Icons.refresh, color: Colors.amberAccent),
               label: const Text('Check for new matchups',
-                  style: TextStyle(color: Colors.white, fontFamily: 'OpenSans')),
+                  style:
+                      TextStyle(color: Colors.white, fontFamily: 'OpenSans')),
             ),
           ],
         ),

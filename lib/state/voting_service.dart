@@ -13,11 +13,19 @@ class VotingService with ChangeNotifier {
   final Map<String, List<MatchupAuthor>> _authors = {};
   bool _loaded = false;
 
+  /// prompts the user hid from the queue (today's only)
+  Set<String> _hidden = {};
+
   bool get loaded => _loaded;
   MatchupFilter get filter => _filter;
 
   /// how many loaded matchups a filter would show
-  int countFor(MatchupFilter f) => _all.where(f.shows).length;
+  int countFor(MatchupFilter f) => _all.where((m) => _shows(f, m)).length;
+
+  Set<String> get hiddenPrompts => Set.unmodifiable(_hidden);
+
+  bool _shows(MatchupFilter f, Matchup m) =>
+      f.shows(m) && !_hidden.contains(m.promptId);
   int get index => _index;
   int get length => _queue.length;
 
@@ -47,9 +55,12 @@ class VotingService with ChangeNotifier {
 
   /// Replaces the queue, leaving out matchups that include one of the
   /// user's own answers (myPostIds)
-  void setMatchups(List<Matchup> matchups, Set<String> myPostIds){
+  /// [hidden] is the prompts the user hid today.
+  void setMatchups(List<Matchup> matchups, Set<String> myPostIds,
+      {Set<String> hidden = const {}}){
     _all = matchups.where((m) => !m.includesAnyPost(myPostIds)).toList();
-    _queue = _all.where(_filter.shows).toList();
+    _hidden = {...hidden};
+    _queue = _all.where((m) => _shows(_filter, m)).toList();
     _index = 0;
     _votes.clear();
     _loaded = true;
@@ -61,9 +72,37 @@ class VotingService with ChangeNotifier {
   void setFilter(MatchupFilter f){
     if (f == _filter) return;
     _filter = f;
-    _queue = _all.where(f.shows).toList();
+    _queue = _all.where((m) => _shows(f, m)).toList();
     final firstOpen = _queue.indexWhere((m) => !hasVoted(m));
     _index = firstOpen < 0 ? _queue.length : firstOpen;
+    notifyListeners();
+  }
+
+  /// Takes every matchup for [promptId] out of the queue. The user stays
+  /// where they were: if the current matchup was for that prompt, the next
+  /// one slides into its place.
+  void hidePrompt(String promptId){
+    if (!_hidden.add(promptId)) return;
+    _requeue();
+  }
+
+  /// Puts a hidden prompt's matchups back (Undo), returning to [current]
+  /// if it's in the queue again
+  void unhidePrompt(String promptId, {Matchup? current}){
+    if (!_hidden.remove(promptId)) return;
+    _requeue(returnTo: current);
+  }
+
+  /// Rebuilds the queue after the hidden prompts change, keeping the place:
+  /// [returnTo] if given and shown, else the same matchup (or the one that
+  /// now follows the spot it held)
+  void _requeue({Matchup? returnTo}){
+    final before = _queue.take(_index).toSet();
+    final was = current;
+    _queue = _all.where((m) => _shows(_filter, m)).toList();
+    final target = returnTo ?? was;
+    final at = target == null ? -1 : _queue.indexOf(target);
+    _index = at >= 0 ? at : _queue.where(before.contains).length;
     notifyListeners();
   }
 
@@ -103,6 +142,7 @@ class VotingService with ChangeNotifier {
     _all = List.empty(growable: true);
     _queue = List.empty(growable: true);
     _filter = MatchupFilter.all;
+    _hidden = {};
     _index = 0;
     _votes.clear();
     _authors.clear();
