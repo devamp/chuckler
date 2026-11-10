@@ -586,4 +586,51 @@ void main() {
         findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('answers carry no friends or global label', (tester) async {
+    await pumpVotePage(tester);
+    // sample-2 is a friends matchup; its answers look like any others
+    await tester.tap(find.text('Skip'));
+    await tester.pumpAndSettle();
+    expect(find.text('Friends'), findsNothing);
+    expect(find.text('Global'), findsNothing);
+    expect(find.byIcon(Icons.people), findsNothing);
+    expect(find.byIcon(Icons.public), findsNothing);
+  });
+
+  testWidgets('the page follows the finger and the next one slides in',
+      (tester) async {
+    await pumpVotePage(tester);
+    final first = answer('Anyone know which button is autopilot?');
+    final startY = tester.getCenter(first).dy;
+
+    final gesture = await tester.startGesture(tester.getCenter(first));
+    await gesture.moveBy(const Offset(0, -30));
+    await gesture.moveBy(const Offset(0, -170));
+    await tester.pump();
+    // mid-swipe: both matchups on screen, nothing moved in the queue yet
+    expect(tester.getCenter(first).dy, lessThan(startY - 150));
+    expect(answer('Hold my coffee'), findsOneWidget);
+    expect(voting.index, 0);
+
+    await gesture.up();
+    await tester.pump(const Duration(milliseconds: 100));
+    // still sliding
+    expect(voting.index, 0);
+    await tester.pumpAndSettle();
+    expect(voting.index, 1);
+    expect(first, findsNothing);
+    expect(answer('Hold my coffee'), findsOneWidget);
+  });
+
+  testWidgets('a short drag springs back without moving', (tester) async {
+    await pumpVotePage(tester);
+    final first = answer('Anyone know which button is autopilot?');
+    final startY = tester.getCenter(first).dy;
+    await tester.timedDrag(first, const Offset(0, -60),
+        const Duration(milliseconds: 800));
+    await tester.pumpAndSettle();
+    expect(voting.index, 0);
+    expect(tester.getCenter(first).dy, moreOrLessEquals(startY));
+  });
 }

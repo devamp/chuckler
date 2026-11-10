@@ -1,6 +1,5 @@
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
-import '../../CustomReusableWidgets/segment_chip.dart';
 import '../../data/matchups.dart';
 import '../createpage/create_stats.dart';
 import '../friends/public_profile_page.dart';
@@ -9,7 +8,6 @@ import '../friends/public_profile_page.dart';
 /// downvote it. After the user votes it shows the results instead.
 class VoteCard extends StatefulWidget {
   final MatchupAnswer answer;
-  final Segment segment;
   final Color accent;
 
   /// null until the user has voted on this matchup
@@ -25,7 +23,6 @@ class VoteCard extends StatefulWidget {
   const VoteCard({
     super.key,
     required this.answer,
-    required this.segment,
     required this.accent,
     required this.myVote,
     this.author,
@@ -117,15 +114,14 @@ class _VoteCardState extends State<VoteCard>
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        SegmentChip(segment: widget.segment),
-                        // anonymous until the user votes
-                        if (_voted && widget.author != null) ...[
-                          const SizedBox(width: 8),
-                          Expanded(child: _authorTag(widget.author!)),
-                        ],
-                      ],
+                    // anonymous until the user votes. Answers carry no
+                    // friends/global label, so a friend's answer looks like
+                    // anyone else's; only prompts are categorized.
+                    SizedBox(
+                      height: 34,
+                      child: _voted && widget.author != null
+                          ? _authorTag(widget.author!)
+                          : null,
                     ),
                     Expanded(
                       child: Center(
@@ -172,7 +168,7 @@ class _VoteCardState extends State<VoteCard>
     );
   }
 
-  /// The author's icon and name, at the right of the top row
+  /// The author's icon and name, at the top right
   /// Tap to open their profile, where you can send a friend request
   Widget _authorTag(MatchupAuthor author) {
     return Align(

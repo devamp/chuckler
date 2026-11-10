@@ -21,16 +21,78 @@ class VotePage extends StatefulWidget {
   State<VotePage> createState() => _VotePageState();
 }
 
-class _VotePageState extends State<VotePage> {
+class _VotePageState extends State<VotePage>
+    with SingleTickerProviderStateMixin {
   final List<Color> answerColors = [Colors.greenAccent, Colors.purpleAccent];
-  double _dragDy = 0;
   bool _showTutorial = false;
+
+  /// How far the page has moved up (negative) or down while swiping, in
+  /// pixels. The neighbouring matchup follows it in from below or above.
+  double _offset = 0;
+  double _travel = 0;
+  late final AnimationController _slide;
+  Animation<double>? _slideAnim;
 
   @override
   void initState() {
     super.initState();
+    _slide = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 280))
+      ..addListener(() => setState(() => _offset = _slideAnim!.value));
     loadMatchups();
     checkTutorial();
+  }
+
+  @override
+  void dispose() {
+    _slide.dispose();
+    super.dispose();
+  }
+
+  /// Slides the page to [to], then runs [then] (moving the queue) and puts
+  /// the page back at rest, where the neighbour it slid in now sits.
+  Future<void> _slideTo(double to, {VoidCallback? then}) async {
+    _slideAnim = Tween<double>(begin: _offset, end: to).animate(
+        CurvedAnimation(parent: _slide, curve: Curves.easeOutCubic));
+    await _slide.forward(from: 0);
+    if (!mounted) return;
+    then?.call();
+    setState(() => _offset = 0);
+  }
+
+  void _goNext() {
+    final voting = Provider.of<VotingService>(context, listen: false);
+    if (!voting.canGoNext || _slide.isAnimating) return;
+    _slideTo(-_travel, then: voting.next);
+  }
+
+  void _goBack() {
+    final voting = Provider.of<VotingService>(context, listen: false);
+    if (!voting.canGoBack || _slide.isAnimating) return;
+    _slideTo(_travel, then: voting.back);
+  }
+
+  void _onDragUpdate(DragUpdateDetails d, VotingService voting) {
+    if (_slide.isAnimating) return;
+    final next = _offset + d.delta.dy;
+    // past either end the page only gives a little
+    final blocked = (next < 0 && !voting.canGoNext) ||
+        (next > 0 && !voting.canGoBack);
+    setState(() => _offset += blocked ? d.delta.dy * 0.25 : d.delta.dy);
+  }
+
+  void _onDragEnd(DragEndDetails d, VotingService voting) {
+    if (_slide.isAnimating) return;
+    final speed = d.velocity.pixelsPerSecond.dy;
+    if (voting.canGoNext &&
+        (_offset < -80 || (_offset < -20 && speed < -600))) {
+      _slideTo(-_travel, then: voting.next);
+    } else if (voting.canGoBack &&
+        (_offset > 80 || (_offset > 20 && speed > 600))) {
+      _slideTo(_travel, then: voting.back);
+    } else {
+      _slideTo(0);
+    }
   }
 
   /// Loads today's matchups once per session, or again when [force] is set
@@ -144,25 +206,20 @@ class _VotePageState extends State<VotePage> {
               child: !votingService.loaded
                   ? const Center(
                       child: CircularProgressIndicator(color: Colors.amber))
-                  : GestureDetector(
-                      // like a reels feed: swipe up for the next matchup,
-                      // down for the previous one
-                      behavior: HitTestBehavior.opaque,
-                      onVerticalDragStart: (_) => _dragDy = 0,
-                      onVerticalDragUpdate: (d) => _dragDy += d.delta.dy,
-                      onVerticalDragEnd: (d) {
-                        double speed = d.velocity.pixelsPerSecond.dy;
-                        if (_dragDy < -80 || (_dragDy < -20 && speed < -600)) {
-                          votingService.next();
-                        } else if (_dragDy > 80 ||
-                            (_dragDy > 20 && speed > 600)) {
-                          votingService.back();
-                        }
-                      },
-                      child: m == null
-                          ? caughtUp()
-                          : matchupView(votingService, m),
-                    ),
+                  : LayoutBuilder(builder: (context, box) {
+                      _travel = box.maxHeight;
+                      return GestureDetector(
+                        // like a reels feed: swipe up for the next matchup,
+                        // down for the previous one; the page follows the
+                        // finger and the neighbour slides in
+                        behavior: HitTestBehavior.opaque,
+                        onVerticalDragUpdate: (d) =>
+                            _onDragUpdate(d, votingService),
+                        onVerticalDragEnd: (d) => _onDragEnd(d, votingService),
+                        child: ClipRect(
+                            child: pager(votingService, m, box.maxHeight)),
+                      );
+                    }),
             ),
             controls(votingService, m),
           ],
@@ -172,10 +229,38 @@ class _VotePageState extends State<VotePage> {
     );
   }
 
+  /// The current page, plus the neighbour coming in while it moves. Pages
+  /// are keyed, so the one that slid in keeps its place once it becomes
+  /// current.
+  Widget pager(VotingService votingService, Matchup? m, double height) {
+    Widget page(Matchup? matchup, double dy, {bool current = false}) {
+      return Transform.translate(
+        key: ValueKey(matchup?.id ?? '_caughtUp'),
+        offset: Offset(0, dy),
+        child: IgnorePointer(
+          ignoring: !current,
+          child: matchup == null
+              ? caughtUp()
+              : matchupView(votingService, matchup),
+        ),
+      );
+    }
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (_offset > 0 && votingService.canGoBack)
+          page(votingService.peek(-1), _offset - height),
+        page(m, _offset, current: true),
+        if (_offset < 0 && votingService.canGoNext)
+          page(votingService.peek(1), _offset + height),
+      ],
+    );
+  }
+
   Widget matchupView(VotingService votingService, Matchup m) {
     MatchupVote? myVote = votingService.voteFor(m);
     return Column(
-      key: ValueKey(m.id),
       children: [
         promptBox(m),
         for (int card = 0; card < 2; card++)
@@ -183,7 +268,6 @@ class _VotePageState extends State<VotePage> {
             flex: 4,
             child: VoteCard(
               answer: m.answers[card],
-              segment: m.segment,
               accent: answerColors[card],
               myVote: myVote,
               author: votingService.authorsFor(m)?[card],
@@ -283,7 +367,7 @@ class _VotePageState extends State<VotePage> {
         children: [
           IconButton(
             tooltip: 'Previous matchup',
-            onPressed: votingService.canGoBack ? votingService.back : null,
+            onPressed: votingService.canGoBack ? _goBack : null,
             icon: const Icon(Icons.arrow_back_ios_new),
             color: Colors.white,
             disabledColor: Colors.white24,
@@ -291,7 +375,7 @@ class _VotePageState extends State<VotePage> {
           const Spacer(),
           if (m != null)
             TextButton.icon(
-              onPressed: votingService.next,
+              onPressed: _goNext,
               icon: const Icon(Icons.keyboard_double_arrow_down,
                   color: Colors.amberAccent),
               label: Text(voted ? 'Next' : 'Skip',

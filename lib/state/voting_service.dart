@@ -24,6 +24,15 @@ class VotingService with ChangeNotifier {
   /// null once the user has gone through every matchup
   Matchup? get current => _index < _queue.length ? _queue[_index] : null;
   bool get canGoBack => _index > 0;
+  bool get canGoNext => _index < _queue.length;
+
+  /// The matchup [delta] places from the current one, for drawing the
+  /// neighbours while swiping. null past either end (past the last one is
+  /// the caught-up page).
+  Matchup? peek(int delta) {
+    final i = _index + delta;
+    return i >= 0 && i < _queue.length ? _queue[i] : null;
+  }
 
   MatchupVote? voteFor(Matchup m) => _votes[m.id];
 
