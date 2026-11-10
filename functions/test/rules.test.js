@@ -425,6 +425,18 @@ describe("the app's exact writes and reads", () => {
   });
 });
 
+describe("leaderboards", () => {
+  it("lets signed-in users read and nobody write", async () => {
+    await seed({"Leaderboards/wins-all": {board: "wins-all", entries: []}});
+    await assertSucceeds(getDoc(doc(as("alice"), "Leaderboards/wins-all")));
+    const anon = env.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(anon, "Leaderboards/wins-all")));
+    await assertFails(setDoc(doc(as("alice"), "Leaderboards/wins-all"),
+        {board: "wins-all", entries: [{username: "alice", value: 999}]}));
+    await assertFails(setDoc(doc(as("alice"), "Leaderboards/new"), {x: 1}));
+  });
+});
+
 describe("other collections", () => {
   it("leaves legacy collections open to signed-in users", async () => {
     await assertSucceeds(setDoc(doc(as("alice"), "Comments/c1"), {x: 1}));

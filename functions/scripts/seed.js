@@ -33,6 +33,14 @@
 // Prompt days are relative to when you run this, so re-run it (and export
 // again) when the seeded days have passed.
 //
+// For wins and leaderboards, have the test accounts vote on yesterday's
+// matchups, then recount and finish the day:
+//   FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 npm --prefix functions run \
+//     seed:votes
+//   FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 npm --prefix functions run recount
+//   FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 npm --prefix functions run \
+//     finish-day -- --force
+//
 // After the 05:00 UTC rollover, today's prompts have no answers and Home has
 // nothing to vote on. To fix that on running emulators without touching
 // accounts, prompts, friends or streaks, answer just today's prompts:
@@ -367,7 +375,40 @@ async function seedFriendPrompts(db, today) {
   return written;
 }
 
-/** Seeds everything, or with --answers only today's answers. */
+/**
+ * Has up to four test accounts vote on each public matchup of `dayId`
+ * (never on their own answers), so wins, results and the leaderboards have
+ * something in them. Each voter's pick is fixed by their uid and the
+ * matchup, so re-running adds nothing. Needs the functions emulator, whose
+ * onVoteCreated counts the votes.
+ * @param {object} db
+ * @param {string} dayId
+ * @return {Promise<number>} votes cast
+ */
+async function seedVotes(db, dayId) {
+  const matchups = await db.collection("MatchUps")
+      .where("promptDateId", "==", dayId)
+      .where("scope", "==", "public").get();
+  let n = 0;
+  for (const m of matchups.docs) {
+    const owners = (await m.ref.collection("Private").doc("owners").get())
+        .data()?.uids || [];
+    const voters = TEST_USERS.filter((u) => !owners.includes(u.uid))
+        .slice(0, 4);
+    for (const u of voters) {
+      const ref = db.doc(`Votes/${m.id}_${u.uid}`);
+      if ((await ref.get()).exists) continue;
+      const pick = crypto.createHash("sha256").update(m.id + u.uid)
+          .digest()[0] % 3 === 0 ? 1 : 0;
+      await ref.set({uid: u.uid, matchupId: m.id, card: pick, type: "win",
+        promptDateId: dayId, at: Timestamp.now()});
+      n++;
+    }
+  }
+  return n;
+}
+
+/** Seeds everything, or with --answers / --votes only that part. */
 async function main() {
   initializeApp({projectId: PROJECT_ID});
   const db = getFirestore();
@@ -375,6 +416,17 @@ async function main() {
 
   // --answers: only answer today's prompts, leaving accounts, prompts and
   // friends as they are. For when the day rolls over on running emulators.
+  // --votes [day]: test accounts vote on that day's matchups (default
+  // yesterday), for wins and leaderboards. Then run recount and finish-day.
+  if (process.argv.includes("--votes")) {
+    const i = process.argv.indexOf("--votes");
+    const dayId = process.argv[i + 1] || addDays(today, -1);
+    const votes = await seedVotes(db, dayId);
+    console.log(`${votes} votes on ${dayId}'s matchups on ` +
+        `${process.env.FIRESTORE_EMULATOR_HOST}`);
+    return;
+  }
+
   if (process.argv.includes("--answers")) {
     const answers = await answerToday(db, today);
     const friendAnswers = await seedFriendPrompts(db, today);

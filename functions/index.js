@@ -157,7 +157,8 @@ exports.onVoteCreated = onDocumentCreated("Votes/{voteId}", async (event) => {
         tx.update(db.collection("Posts").doc(a.postId), update);
       });
       if (winner) {
-        applyStats(tx, db, winner.uid, winner.profile, {deltas: {wins: 1}});
+        applyStats(tx, db, winner.uid, winner.profile,
+            {deltas: {wins: 1}, day: snap.data().promptDateId || null});
       }
     });
   } catch (e) {
@@ -253,7 +254,8 @@ exports.onPostCreated = onDocumentCreated("Posts/{postId}", async (event) => {
       const snap = await tx.get(profileRef(db, uid));
       const profile = snap.exists ? snap.data() : {};
       const streak = markStreakDay(profile.streak, promptDateId);
-      applyStats(tx, db, uid, profile, {deltas: {answers: 1}, streak});
+      applyStats(tx, db, uid, profile,
+          {deltas: {answers: 1}, streak, day: promptDateId});
     });
   } catch (e) {
     console.log(`onPostCreated: profile ${uid}: ${e}`);

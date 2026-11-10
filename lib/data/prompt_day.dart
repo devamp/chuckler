@@ -8,14 +8,14 @@ const int rolloverHourUtc = 5;
 /// The prompt day (yyyy-MM-dd) that nowUtc falls in. Also the PromptDays
 /// doc id and every prompt's promptDateId.
 String promptDayId(DateTime nowUtc) {
-  final shifted = nowUtc.toUtc().subtract(const Duration(hours: rolloverHourUtc));
+  final shifted =
+      nowUtc.toUtc().subtract(const Duration(hours: rolloverHourUtc));
   return shifted.toIso8601String().substring(0, 10);
 }
 
 /// When a prompt day opens
-DateTime promptDayStart(String dayId) =>
-    DateTime.parse('${dayId}T00:00:00Z')
-        .add(const Duration(hours: rolloverHourUtc));
+DateTime promptDayStart(String dayId) => DateTime.parse('${dayId}T00:00:00Z')
+    .add(const Duration(hours: rolloverHourUtc));
 
 /// When a prompt day closes (the next one opens)
 DateTime promptDayEnd(String dayId) =>
@@ -26,3 +26,20 @@ DateTime promptDayDate(String dayId) => DateTime.parse('${dayId}T00:00:00Z');
 
 /// History docs hold one month of answers each: yyyy-MM
 String historyMonthId(String dayId) => dayId.substring(0, 7);
+
+/// The Monday that starts dayId's week (yyyy-MM-dd). Leaderboard weeks run
+/// Monday to Sunday in prompt days. The twin of weekStart in
+/// functions/promptDay.js.
+String weekStartId(String dayId) {
+  final d = promptDayDate(dayId);
+  return d
+      .subtract(Duration(days: d.weekday - DateTime.monday))
+      .toIso8601String()
+      .substring(0, 10);
+}
+
+/// The day id [n] days after [dayId] (negative goes back)
+String addDays(String dayId, int n) => promptDayDate(dayId)
+    .add(Duration(days: n))
+    .toIso8601String()
+    .substring(0, 10);

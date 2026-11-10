@@ -135,7 +135,118 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "FriendView",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "week.start",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "week.wins",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "FriendView",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "week.start",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "week.answers",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "FriendView",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "weekPrev.start",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "weekPrev.wins",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "FriendView",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "weekPrev.start",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "weekPrev.answers",
+          "order": "DESCENDING"
+        }
+      ]
     }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {
+      "collectionGroup": "FriendView",
+      "fieldPath": "stats.wins",
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "DESCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "DESCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "FriendView",
+      "fieldPath": "stats.answers",
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "DESCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "DESCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "FriendView",
+      "fieldPath": "streak.current",
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "DESCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "DESCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    }
+  ]
 }

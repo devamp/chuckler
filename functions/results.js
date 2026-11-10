@@ -1,10 +1,12 @@
 // Daily results: once a prompt day ends, each answer's final stats go into
-// its author's History entry (`final`), and each author gets one results
-// notification. Run by the dailyResults schedule, or in the emulator by
+// its author's History entry (`final`), each author gets one results
+// notification, and the global leaderboards are rewritten. Run by the
+// dailyResults schedule, or in the emulator by
 // `npm --prefix functions run finish-day [dayId]`.
 
 const {FieldValue} = require("firebase-admin/firestore");
 const {notificationRef, notification, clip} = require("./profile");
+const {writeLeaderboards} = require("./leaderboards");
 
 /**
  * An answer's final stats from its post's counts. The win rate is
@@ -62,7 +64,7 @@ function resultsText(dayId, answers) {
  * @param {object} db
  * @param {string} dayId yyyy-MM-dd
  * @param {{force: boolean}} options
- * @return {Promise<object>} {answers, authors} or {skipped: true}
+ * @return {Promise<object>} {answers, authors, boards} or {skipped: true}
  */
 async function finishDay(db, dayId, {force = false} = {}) {
   const dayRef = db.collection("PromptDays").doc(dayId);
@@ -109,7 +111,10 @@ async function finishDay(db, dayId, {force = false} = {}) {
   writer.set(dayRef, {resultsAt: FieldValue.serverTimestamp()},
       {merge: true});
   await writer.close();
-  return {answers: posts.size, authors: byAuthor.size};
+  // the public leaderboards, now that the day's results are final
+  const boards = await writeLeaderboards(db, dayId,
+      posts.docs.map((d) => ({id: d.id, data: d.data()})));
+  return {answers: posts.size, authors: byAuthor.size, boards};
 }
 
 module.exports = {finishDay, finalStats, resultsText, shortDate};

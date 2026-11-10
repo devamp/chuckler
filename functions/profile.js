@@ -3,6 +3,34 @@
 
 const {FieldValue} = require("firebase-admin/firestore");
 const {newAwards} = require("./awards");
+const {weekStart} = require("./promptDay");
+
+// stats also counted per week, for the weekly leaderboards
+const WEEK_STATS = ["answers", "wins"];
+
+/**
+ * The profile's `week` after adding `deltas` for prompt day `day`:
+ * {start, answers, wins}, where start is the week's Monday. A newer week
+ * starts again from zero; a change for an older week than the stored one
+ * (a late vote) leaves it alone. null when nothing weekly changes.
+ * @param {object|undefined} week the stored week
+ * @param {string|null} day the prompt day the change belongs to
+ * @param {object} deltas {stat: n}
+ * @return {object|null}
+ */
+function nextWeek(week, day, deltas) {
+  const keys = Object.keys(deltas).filter((k) => WEEK_STATS.includes(k));
+  if (!day || keys.length === 0) return null;
+  const start = weekStart(day);
+  const stored = week && week.start ? week : null;
+  if (stored && stored.start > start) return null;
+  const base = stored && stored.start === start ? stored : {};
+  // every field written, so a reset can't leave last week's counts behind
+  const next = {start};
+  for (const k of WEEK_STATS) next[k] = base[k] || 0;
+  for (const k of keys) next[k] = Math.max(0, next[k] + deltas[k]);
+  return next;
+}
 
 /**
  * @param {object} db
@@ -43,10 +71,12 @@ function notification(type, text, extra = {}) {
  * @param {object} db
  * @param {string} uid
  * @param {object} profile the profile's current data ({} if none)
- * @param {object} change {deltas: {stat: n}, streak: new streak or null}
+ * @param {object} change {deltas: {stat: n}, streak: new streak or null,
+ *     day: the prompt day it belongs to, for the weekly counts}
  * @return {Array<object>} the awards earned
  */
-function applyStats(tx, db, uid, profile, {deltas = {}, streak = null} = {}) {
+function applyStats(tx, db, uid, profile,
+    {deltas = {}, streak = null, day = null} = {}) {
   const stats = {...(profile.stats || {})};
   const update = {};
   for (const [key, n] of Object.entries(deltas)) {
@@ -54,6 +84,15 @@ function applyStats(tx, db, uid, profile, {deltas = {}, streak = null} = {}) {
     update.stats = {...(update.stats || {}), [key]: stats[key]};
   }
   if (streak) update.streak = streak;
+  const week = nextWeek(profile.week, day, deltas);
+  if (week) {
+    update.week = week;
+    // a new week keeps the last one, so the weekly board written just
+    // after the rollover still finds people who've already answered
+    if (profile.week?.start && profile.week.start < week.start) {
+      update.weekPrev = profile.week;
+    }
+  }
   const after = {...profile, stats, ...(streak ? {streak} : {})};
   const awards = newAwards(after);
   for (const a of awards) {
@@ -97,4 +136,5 @@ function clip(s, n = 40) {
 
 module.exports = {
   profileRef, notificationRef, notification, applyStats, bumpStats, clip,
+  nextWeek, WEEK_STATS,
 };

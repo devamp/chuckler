@@ -67,6 +67,8 @@ EmailRequests/{emailHash}/From/{uid}  THAT EMAIL'S OWNER: a friend request sent 
 
 Votes/{matchupId}_{uid}               one per user per matchup; create only
 Dislikes/{targetId}_{uid}             one per user per answer or prompt; readable only by its creator
+
+Leaderboards/{board}                  ANY SIGNED-IN USER: a daily snapshot of a global board; server only
 ```
 
 ### Users
@@ -90,6 +92,8 @@ Users/{sponsorId}   { username, photoUrl, kind: "sponsor", bio }          (later
 ```
 bio
 stats:  { answers, wins, comments, friends, bestRank }
+week:     { start: "2026-11-09", answers, wins }   this week's counts (start is its Monday)
+weekPrev: { start, answers, wins }                  the week before, kept when a new one starts
 awards: { posts: { "1": <when>, "100": <when> }, streak: { "30": <when> }, … }
 streak: {
   days:    "1101110001111",   one character per prompt day, oldest first
@@ -269,7 +273,7 @@ To dislike, the app writes one batch:
 | Send a friend request | `FriendRequests/{me}` under them (by username), or `EmailRequests/{hash}/From/{me}` (by email) | |
 | Accept a friend | `Friends` docs on both sides + delete the request, one batch | |
 | Create a friend prompt | `FriendPrompts/{id}` (before, after, creator, no audience) | `audience` from the creator's friends |
-| A prompt day ends | | its `Results` pages, `final` stats in each author's `History`, a results notification each |
+| A prompt day ends | | its `Results` pages, `final` stats in each author's `History`, a results notification each, the global `Leaderboards` |
 
 Until the project is on Blaze, functions don't run in production. The app can batch its own `History` write, but counts and streaks stay on sample data, because client-written counts can be edited by anyone.
 
@@ -338,6 +342,14 @@ Account tab:
 - Notifications (`Users/{uid}/Notifications`) and achievements (`awards` on the profile), as above. Daily results run by script in the emulator.
 
 Friend prompts: `FriendPrompts/{uid}_{dayId}` with the audience set by `onFriendPromptCreated` (which also notifies each friend); answers are `Posts` with `promptSource: "friends"`; `createMatchup` gives their matchups `scope: "friends"` and the prompt's `audience`. The Create tab lists today's friend prompts (an `audience array-contains` query plus a direct read of your own) after the daily ones; Home's Friends filter shows their matchups.
+
+Leaderboard tab:
+- Friends boards are worked out in the app from each friend's `FriendView/profile` (stats, `week`, streak) and the History month holding yesterday (`final` stats), about 4 reads per friend, once per session. Weekly counts whose `week.start` isn't this week read as zero.
+- Global boards are `Leaderboards/{board}`, written by `finishDay` (`functions/leaderboards.js`): `answers` (the finished day's top 25 answers to daily prompts, by wins, then win rate, then votes, with usernames, since the day is over), `wins-week`, `wins-all`, `posts-week`, `posts-all` and `streak` (top 50 each, `{username, photoUrl, value}`). One read per board. Weekly boards take everyone whose `week` or `weekPrev` is the finished day's week, so Monday's snapshot is last week's final standings even for people who answered just after the rollover. Streaks are read by the stored `current` and the ones that ended are dropped. Official accounts are left off.
+- Answers to friend prompts are never on a board, so a friend prompt's audience stays private.
+- Weeks run Monday to Sunday in prompt days (`weekStart` in `functions/promptDay.js`, `weekStartId` in `lib/data/prompt_day.dart`). `applyStats` keeps `week` from the event's prompt day.
+- If you're off a global board, your row is pinned below it without a number; there's no exact global rank, which would cost a write per user per day.
+- The collection-group indexes the board queries need are in `firestore.indexes.json` (not deployed).
 
 Not live yet: ranking and checkpoints, Past results, prompt dislikes, undoing a dislike, push notifications, reporting or removing a friend prompt.
 

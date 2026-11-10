@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:provider/provider.dart';
 
+import '../../state/leaderboard_service.dart';
 import '../../state/create_service.dart';
 import '../../state/prompt_service.dart';
 import '../../state/friends_service.dart';
@@ -61,6 +62,7 @@ class Settings extends StatelessWidget {
                               Provider.of<VotingService>(context, listen: false).logout();
                               Provider.of<FriendsService>(context, listen: false).logout();
                               Provider.of<AccountService>(context, listen: false).logout();
+                              Provider.of<LeaderboardService>(context, listen: false).logout();
                               await _auth.signOut();
                               Navigator.pushReplacementNamed(context, '/login');
                             },

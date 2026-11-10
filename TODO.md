@@ -102,12 +102,22 @@ All of this runs **server-side** (scheduled Cloud Functions at the checkpoints) 
 
 **Still to do:**
 - More tiers, e.g. 7- and 100-day streaks, 10 and 500 posts, 10 friends: one line each in `functions/awards.json`, then `recount`.
-- Leaderboard, The 1% and Refer a Friend need ranking and referral tracking.
+- The Leaderboard award (e.g. finishing a week in the top 10) could be given from the weekly snapshot; The 1% and Refer a Friend need ranking and referral tracking.
 - Notify requests sent by email: store `EmailHashes/{hash} -> uid` (server-only) at signup so the function can find the recipient.
 - Push notifications (tokens in `Private/account`).
 - Tapping a notification should open what it's about (the answer's comments, the Friends screen).
 - Profile photos: the header still uses initials.
 - `lib/pages/accountpage/account_navbar_down.dart` is an unused older copy of the Account screen; delete it.
+
+## 6. Leaderboard tab
+
+**Built (live in the emulator):** a Friends / Global switch; boards for yesterday's top answers, wins, current streak and posts, with This week / All time for wins and posts. Friends boards are live from friends' profiles; global boards are a snapshot written when each day ends. Tapping someone opens their profile. See `docs/data-model.md`, "Leaderboard tab".
+
+**Still to do:**
+- Your exact global rank when you're off the top 50 (needs a rank written per user, or a count query on a public stats copy).
+- Cache the friends boards for the day instead of re-reading every friend each session (also the streak standings).
+- Profile photos on the boards (they show initials until profiles have photos).
+- Deploying needs the `FriendView` collection-group indexes in `firestore.indexes.json` and Blaze for `dailyResults`.
 
 ## Prerequisites
 

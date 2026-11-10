@@ -110,8 +110,20 @@ function streakRuns(days) {
   return {current: run, longest};
 }
 
+/**
+ * The Monday that starts `dayId`'s week. Leaderboard weeks run Monday to
+ * Sunday in prompt days, so they turn over at Monday's 05:00 UTC rollover.
+ * @param {string} dayId
+ * @return {string}
+ */
+function weekStart(dayId) {
+  const dow = new Date(`${dayId}T00:00:00Z`).getUTCDay(); // 0 is Sunday
+  return addDays(dayId, -((dow + 6) % 7));
+}
+
 module.exports = {
   ROLLOVER_HOUR_UTC,
+  weekStart,
   promptDayId,
   promptDayStart,
   promptDayEnd,

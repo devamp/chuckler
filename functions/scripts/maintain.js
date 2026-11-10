@@ -11,10 +11,15 @@
 //     Gives matchups from before scopes existed scope "public", so the Home
 //     tab's public query finds them.
 //
+//   leaderboards [yyyy-MM-dd]
+//     Rewrites the global leaderboards as of a prompt day (default:
+//     yesterday), as finish-day does, without touching results.
+//
 //   recount
-//     Recomputes every user's stats (answers, wins, comments, friends) and
-//     streak from the data, and awards any tiers they qualify for. Use it
-//     to backfill after adding a stat or an award tier, or to fix drift.
+//     Recomputes every user's stats (answers, wins, comments, friends),
+//     streak and this week's counts from the data, and awards any tiers
+//     they qualify for. Use it to backfill after adding a stat or an award
+//     tier, or to fix drift.
 //
 // Run from the repo root with the emulators running:
 //   FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 npm --prefix functions run recount
@@ -23,8 +28,10 @@
 
 const {initializeApp} = require("firebase-admin/app");
 const {getFirestore, FieldValue} = require("firebase-admin/firestore");
-const {promptDayId, addDays, markStreakDay} = require("../promptDay");
+const {promptDayId, addDays, markStreakDay, weekStart} =
+    require("../promptDay");
 const {finishDay} = require("../results");
+const {writeLeaderboards} = require("../leaderboards");
 const {newAwards} = require("../awards");
 const {profileRef, notificationRef, notification} = require("../profile");
 
@@ -47,9 +54,19 @@ async function recountUser(uid, comments) {
   const posts = await db.collection("Posts").where("uid", "==", uid).get();
   let wins = 0;
   const days = new Set();
+  const thisWeek = weekStart(promptDayId(new Date()));
+  const week = {start: thisWeek, answers: 0, wins: 0};
+  const weekPrev = {start: addDays(thisWeek, -7), answers: 0, wins: 0};
   for (const p of posts.docs) {
+    const day = p.data().promptDateId;
     wins += p.data().counts?.wins || 0;
-    if (p.data().promptDateId) days.add(p.data().promptDateId);
+    if (day) days.add(day);
+    for (const w of [week, weekPrev]) {
+      if (day && weekStart(day) === w.start) {
+        w.answers++;
+        w.wins += p.data().counts?.wins || 0;
+      }
+    }
   }
   let streak;
   for (const day of [...days].sort()) {
@@ -66,7 +83,7 @@ async function recountUser(uid, comments) {
   const after = {...profile, stats: {...profile.stats, ...stats},
     ...(streak ? {streak} : {})};
   const awards = newAwards(after);
-  const update = {stats, ...(streak ? {streak} : {})};
+  const update = {stats, week, weekPrev, ...(streak ? {streak} : {})};
   for (const a of awards) {
     update.awards = update.awards || {};
     update.awards[a.id] = {...(update.awards[a.id] || {}),
@@ -79,7 +96,7 @@ async function recountUser(uid, comments) {
         `You earned ${a.name}!`, {award: {id: a.id, at: a.at}}));
   }
   await batch.commit();
-  return {...stats, awards: awards.map((a) => a.name)};
+  return {...stats, week, awards: awards.map((a) => a.name)};
 }
 
 /** Recounts everyone. */
@@ -123,6 +140,13 @@ async function main() {
     await recount();
   } else if (command === "migrate") {
     await migrate();
+  } else if (command === "leaderboards") {
+    const dayId = args[0] || addDays(promptDayId(new Date()), -1);
+    const posts = await db.collection("Posts")
+        .where("promptDateId", "==", dayId).get();
+    const result = await writeLeaderboards(db, dayId,
+        posts.docs.map((d) => ({id: d.id, data: d.data()})));
+    console.log(`leaderboards ${dayId}: ${JSON.stringify(result)}`);
   } else if (command === "finish-day") {
     const dayId = args.find((a) => !a.startsWith("--")) ||
         addDays(promptDayId(new Date()), -1);
@@ -131,7 +155,7 @@ async function main() {
     console.log(`finish-day ${dayId}: ${JSON.stringify(result)}`);
   } else {
     console.error("usage: maintain.js recount | migrate | " +
-        "finish-day [day] [--force]");
+        "finish-day [day] [--force] | leaderboards [day]");
     process.exit(1);
   }
 }

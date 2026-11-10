@@ -107,6 +107,15 @@ service cloud.firestore {
           && d.get('likedBy', []) == [];
     }
 
+    // ---- Leaderboards --------------------------------------------------
+
+    // The global boards: a daily snapshot written by the server (finishDay)
+    // with usernames, photos and values only. Anyone signed in reads them.
+    match /Leaderboards/{board} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
     // ---- Usernames -----------------------------------------------------
 
     // One doc per name, so names are unique. Claim a free name for yourself;
