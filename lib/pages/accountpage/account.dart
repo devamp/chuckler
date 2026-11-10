@@ -135,7 +135,7 @@ class _AccountState extends State<Account> {
                   onPressed: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => Settings()),
+                      MaterialPageRoute(builder: (context) => const Settings()),
                     );
                   },
                   style: const ButtonStyle(

@@ -274,6 +274,7 @@ To dislike, the app writes one batch:
 | Send a friend request | `FriendRequests/{me}` under them (by username), or `EmailRequests/{hash}/From/{me}` (by email) | |
 | Accept a friend | `Friends` docs on both sides + delete the request, one batch | |
 | Create a friend prompt | `FriendPrompts/{id}` (before, after, creator, no audience) | `audience` from the creator's friends |
+| Delete account | (re-enter password) the Auth account is deleted | `onAccountDeleted`: the Users tree, username claim, friends' entries, sent requests, posts with their matchups, friend prompts, votes, dislikes, comments, leaderboard rows |
 | A prompt day ends | | its `Results` pages, `final` stats in each author's `History`, a results notification each, the global `Leaderboards` |
 
 Until the project is on Blaze, functions don't run in production. The app can batch its own `History` write, but counts and streaks stay on sample data, because client-written counts can be edited by anyone.

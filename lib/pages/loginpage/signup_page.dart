@@ -194,7 +194,11 @@ class _SignupState extends State<SignupPage> {
                                   actions: [
                                     TextButton(
                                       onPressed: () {
-                                        Navigator.pushNamed(context, '/login');
+                                        // back to the login screen, the
+                                        // only route under signup
+                                        Navigator.of(context)
+                                            .pushNamedAndRemoveUntil(
+                                                '/', (_) => false);
                                       },
                                       child: Text('OK'),
                                     ),
@@ -274,7 +278,8 @@ class _SignupState extends State<SignupPage> {
                   SizedBox(height: 15.0),
                   GestureDetector(
                     onTap: () {
-                      Navigator.pushNamed(context, '/login');
+                      Navigator.of(context)
+                          .pushNamedAndRemoveUntil('/', (_) => false);
                     },
                     child: Container(
                       padding: const EdgeInsets.only(left: 20.0),

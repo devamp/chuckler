@@ -39,4 +39,13 @@ class FeedService with ChangeNotifier {
     _viewingColor = Colors.amber;
     notifyListeners();
   }
+
+  /// Forgets the feed, so the next user starts fresh
+  void logout(){
+    _viewingPost = "____________";
+    _viewingColor = Colors.amber;
+    _currentPosts = List<DbPost>.empty(growable: true);
+    _currentFeedPromptId = null;
+    notifyListeners();
+  }
 }

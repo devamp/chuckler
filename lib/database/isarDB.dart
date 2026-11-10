@@ -25,6 +25,14 @@ class IsarService {
     db = await Future.value(Isar.getInstance());
   }
 
+  /// Empties the on-device cache, so the next account to sign in on this
+  /// phone doesn't see the last one's answers
+  Future<void> clearAll() async {
+    await db.writeTxn(() async {
+      await db.clear();
+    });
+  }
+
   /// CREATE FUNCTIONS
 
   Future<void> addUserToDb(DbUser user) async {

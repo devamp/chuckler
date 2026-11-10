@@ -27,6 +27,15 @@ class SessionService with ChangeNotifier {
     notifyListeners();
   }
 
+  /// Forgets the signed-in user
+  void logout(){
+    _loggedInUser = null;
+    _loginTime = null;
+    firstLogin = false;
+    email = null;
+    notifyListeners();
+  }
+
   void setLoginTime(String? logint){
     _loginTime = logint;
     if(_loginTime == null){

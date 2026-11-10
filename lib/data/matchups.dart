@@ -316,3 +316,37 @@ Future<void> saveHiddenPrompts(FirebaseFirestore firestore, String uid,
     'promptIds': promptIds.toList()..sort(),
   });
 }
+
+/// A prompt the user hid from Home, with its text for the Settings list
+class HiddenPrompt {
+  final String promptId;
+  final String before;
+  final String after;
+
+  const HiddenPrompt(this.promptId, this.before, this.after);
+}
+
+/// The prompts hidden for [dayId] with their text: daily prompts from
+/// PromptDays, friend prompts (ids `{uid}_{dayId}`) from FriendPrompts. One
+/// read for the list and one per prompt; an unreadable prompt is listed
+/// without text.
+Future<List<HiddenPrompt>> getHiddenPromptDetails(
+    FirebaseFirestore firestore, String uid, String dayId) async {
+  final ids = (await getHiddenPrompts(firestore, uid, dayId)).toList()..sort();
+  return Future.wait(ids.map((id) async {
+    try {
+      final ref = id.endsWith('_$dayId')
+          ? firestore.collection('FriendPrompts').doc(id)
+          : firestore
+              .collection('PromptDays')
+              .doc(dayId)
+              .collection('Prompts')
+              .doc(id);
+      final data = (await ref.get()).data() ?? const {};
+      return HiddenPrompt(id, data['before'] as String? ?? '',
+          data['after'] as String? ?? '');
+    } catch (e) {
+      return HiddenPrompt(id, '', '');
+    }
+  }));
+}

@@ -10,6 +10,8 @@ const {
   profileRef, notificationRef, notification, applyStats, bumpStats, clip,
 } = require("./profile");
 const {finishDay} = require("./results");
+const {deleteUserData} = require("./account");
+const functionsV1 = require("firebase-functions/v1");
 initializeApp();
 const db = getFirestore();
 
@@ -342,3 +344,15 @@ exports.dailyResults = onSchedule(
       const result = await finishDay(db, dayId);
       console.log(`dailyResults ${dayId}: ${JSON.stringify(result)}`);
     });
+
+// onAccountDeleted removes everything a user made once their Auth account
+// is deleted, from the app's Delete account button or the console. See
+// deleteUserData in account.js.
+exports.onAccountDeleted = functionsV1.auth.user().onDelete(async (user) => {
+  try {
+    const done = await deleteUserData(db, user.uid);
+    console.log(`onAccountDeleted ${user.uid}: ${JSON.stringify(done)}`);
+  } catch (e) {
+    console.log(`onAccountDeleted ${user.uid}: ${e}`);
+  }
+});

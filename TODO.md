@@ -119,6 +119,17 @@ All of this runs **server-side** (scheduled Cloud Functions at the checkpoints) 
 - Profile photos on the boards (they show initials until profiles have photos).
 - Deploying needs the `FriendView` collection-group indexes in `firestore.indexes.json` and Blaze for `dailyResults`.
 
+## 7. Settings
+
+**Built:** account details, Change password (reset email), Hidden prompts with Unhide, About (version), a Log out that returns to login and clears everything, and Delete account (password, then `onAccountDeleted` removes the user's data). Subscription, Security and Release Notes were placeholders and are gone for now.
+
+**Still to do:**
+- Fill in `supportEmail`, `termsUrl` and `privacyUrl` in `lib/pages/constant_strings.dart` (App Store review needs a privacy policy link); their rows appear once set.
+- Changing username: claim the new name, release the old one, and a function updates every copy (posts, comments, friends lists, prompt creators), at most once every 30 days.
+- Notification settings, once push notifications exist.
+- Account deletion scans every comment page for the user's comments; keep a `commenters` array per page before this gets big.
+- Delete account needs Cloud Functions (Blaze) to clean up in production; on Spark only the login is deleted.
+
 ## Prerequisites
 
 - **Friends lists by uid.** *Done in the emulator (slice 3):* `Friends` and `FriendRequests` by uid, requests by username or email, and a Friends screen on the Account tab. *Friends who answered* is live on the Create tab (a `Posts` query per prompt, `uid in` the user's friends, 30 at a time). *Friend streak standings* are live too (friends can read each other's `FriendView`). Still to do: opening a friend's profile, and moving the Past feed popup off the old username lists on `Users`.
