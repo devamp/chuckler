@@ -18,8 +18,10 @@ const List<String> _monthNames = [
 void showStreakSheet(BuildContext context, int streak, {bool sample = false}) {
   showModalBottomSheet(
     context: context,
-    backgroundColor: Colors.black87,
+    backgroundColor: const Color(0xFF1C1C1E),
     isScrollControlled: true,
+    useSafeArea: true,
+    showDragHandle: true,
     shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
     builder: (_) => StreakSheet(streak: streak, sample: sample),
@@ -39,6 +41,7 @@ class StreakSheet extends StatefulWidget {
 
 class _StreakSheetState extends State<StreakSheet> {
   late final Future<StreakHistory> _history;
+
   /// today's prompt day, as a UTC midnight
   final DateTime _today = promptDayDate(promptDayId(DateTime.now().toUtc()));
 
@@ -64,6 +67,26 @@ class _StreakSheetState extends State<StreakSheet> {
         friends: friends);
   }
 
+  bool _closing = false;
+
+  /// Pulling down past the top closes the sheet. The scroll view takes the
+  /// drag itself (on iOS it bounces), so the sheet wouldn't move otherwise.
+  bool _onScroll(ScrollNotification n) {
+    if (_closing || n.metrics.axis != Axis.vertical) return false;
+    final pulledDown = switch (n) {
+      ScrollUpdateNotification(:final dragDetails) =>
+        dragDetails != null && n.metrics.pixels < -50,
+      OverscrollNotification(:final dragDetails, :final overscroll) =>
+        dragDetails != null && overscroll < 0 && n.metrics.pixels <= 0,
+      _ => false,
+    };
+    if (pulledDown) {
+      _closing = true;
+      Navigator.of(context).maybePop();
+    }
+    return false;
+  }
+
   bool get _onCurrentMonth =>
       _month.year == _today.year && _month.month == _today.month;
 
@@ -78,50 +101,64 @@ class _StreakSheetState extends State<StreakSheet> {
     return ConstrainedBox(
       constraints:
           BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.85),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 18, 20, 30),
-        child: FutureBuilder<StreakHistory>(
-          future: _history,
-          builder: (context, snapshot) {
-            final history = snapshot.data;
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.local_fire_department,
-                        color: Colors.orangeAccent, size: 30),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text('${widget.streak} DAY STREAK',
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontFamily: 'NewAmsterdam',
-                                fontSize: 30)),
+      child: NotificationListener<ScrollNotification>(
+        onNotification: _onScroll,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 30),
+          child: FutureBuilder<StreakHistory>(
+            future: _history,
+            builder: (context, snapshot) {
+              final history = snapshot.data;
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.local_fire_department,
+                          color: Colors.orangeAccent, size: 30),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text('${widget.streak} DAY STREAK',
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontFamily: 'NewAmsterdam',
+                                  fontSize: 30)),
+                        ),
                       ),
-                    ),
+                      const Spacer(),
+                      IconButton(
+                        tooltip: 'Close',
+                        onPressed: () => Navigator.of(context).pop(),
+                        style: IconButton.styleFrom(
+                            backgroundColor:
+                                Colors.white.withValues(alpha: 0.08)),
+                        icon: const Icon(Icons.close_rounded,
+                            color: Colors.white),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (history == null)
+                    const Padding(
+                      padding: EdgeInsets.all(40),
+                      child: Center(
+                          child:
+                              CircularProgressIndicator(color: Colors.amber)),
+                    )
+                  else ...[
+                    monthHeader(history),
+                    const SizedBox(height: 8),
+                    calendar(history),
+                    const SizedBox(height: 20),
+                    if (history.standings.isNotEmpty) standings(history),
                   ],
-                ),
-                const SizedBox(height: 12),
-                if (history == null)
-                  const Padding(
-                    padding: EdgeInsets.all(40),
-                    child: Center(
-                        child: CircularProgressIndicator(color: Colors.amber)),
-                  )
-                else ...[
-                  monthHeader(history),
-                  const SizedBox(height: 8),
-                  calendar(history),
-                  const SizedBox(height: 20),
-                  if (history.standings.isNotEmpty) standings(history),
                 ],
-              ],
-            );
-          },
+              );
+            },
+          ),
         ),
       ),
     );
@@ -199,8 +236,8 @@ class _StreakSheetState extends State<StreakSheet> {
           children: [
             for (int i = 0; i < blanks; i++) const SizedBox(),
             for (int d = 1; d <= daysInMonth; d++)
-              dayCell(DateTime.utc(_month.year, _month.month, d), today,
-                  history),
+              dayCell(
+                  DateTime.utc(_month.year, _month.month, d), today, history),
           ],
         ),
       ],
@@ -257,7 +294,8 @@ class _StreakSheetState extends State<StreakSheet> {
                 fontFamily: 'NewAmsterdam',
                 fontSize: 22)),
         if (place > 0)
-          Text("You're #$place of ${history.standings.length} with your friends",
+          Text(
+              "You're #$place of ${history.standings.length} with your friends",
               style: const TextStyle(
                   color: Colors.white70, fontFamily: 'OpenSans')),
         const SizedBox(height: 8),
