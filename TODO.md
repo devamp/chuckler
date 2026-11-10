@@ -130,6 +130,50 @@ All of this runs **server-side** (scheduled Cloud Functions at the checkpoints) 
 - Account deletion scans every comment page for the user's comments; keep a `commenters` array per page before this gets big.
 - Delete account needs Cloud Functions (Blaze) to clean up in production; on Spark only the login is deleted.
 
+## Ideas (options, not decided)
+
+### A. Rapid-fire matchups (more than two answers)
+
+A second matchup type alongside today's head-to-head:
+- A rapid-fire matchup shows **more than two answers** to the same prompt (say 3 to 5).
+- Under each answer is a **slider** from dislike to like. Each one is locked in the moment the voter lets go: no adjusting afterwards, like today's final votes.
+- The answer with the **highest slide** wins the matchup's point (counts toward `stats.wins` like a head-to-head win).
+
+To work out first:
+- **Data:**
+  - matchups gain `type: "duel" | "rapid"` and an `answers` list longer than two;
+  - a vote stores a value per answer (e.g. `Votes/{matchupId}_{uid}` with `scores: {postId: 0–100}`, written once per slider, or once when all are set);
+  - `createMatchup` groups N unmatched posts instead of pairing;
+  - `onVoteCreated` totals the scores.
+- **Ties and partial votes:** what happens if a voter leaves before setting every slider? Does a single voter's slide count, or do totals or averages across voters decide the winner?
+- **Fit with dislikes and ranking:** sliders could replace the downvote (a low slide is a dislike) and give a richer win rate.
+- **UI:** a vertical list of answer cards each with a slider fits the screen better than stacked cards. Horizontal swipes, which vote on head-to-heads, must not clash with dragging a slider.
+- **Mix:** how often rapid-fire shows up in the queue, and whether it's its own filter.
+
+### B. More prompt types: "Caption this"
+
+An image with no text prompt; people write the caption. Builds on the caption notes under Create tab above (`kind: "caption"`, `imageUrl`/`imageAlt` copied into matchups, a caption card on Create and the image on the vote screen).
+- **Images:** who supplies them (Chuckler's daily prompts first; user-uploaded images for friend prompts need moderation), and where they live (Cloud Storage needs rules that let signed-in users read prompt images, and Storage rules currently deny everything).
+- **Cost and plan:** check Storage on the current plan, keep images small (resize to ~1080px, cache on the phone).
+- **Results and leaderboards:** top answers need to show the image as well as the caption.
+
+### C. Rename the app to "Whodah"
+
+"Chuckler" is too close to existing trademarks. Rename everywhere:
+- **User-facing:**
+  - the iOS display name (`CFBundleDisplayName`, `CFBundleName` in `ios/Runner/Info.plist`);
+  - the app's title in `MaterialApp`, and any copy that says Chuckler;
+  - the official prompt account (`Users/chuckler`, username "Chuckler", `Usernames/chuckler`);
+  - the icon and launch screen if they show the name.
+- **Code and project:**
+  - the Dart package name (`name: chuckler` in `pubspec.yaml`, so every `package:chuckler/...` import changes);
+  - the bundle ID, which is still `com.example.chuckler` and needs a permanent one anyway (plan mode: it means registering the new ID in Firebase and a new `GoogleService-Info.plist`);
+  - test accounts `@chuckler.test` and the seed;
+  - docs.
+- **Firebase:** the project id `chuckler-622ff` can't be renamed. Either keep it (users never see it) or create a new project and move over. It only holds test accounts, so moving is cheap now.
+- **Before committing to the name:** run a trademark search on "Whodah" (USPTO, and the App Store for apps with the same or a similar name), and check that the domain and social handles are free.
+- Around 60 files mention Chuckler today, so do it in one pass on its own branch.
+
 ## Prerequisites
 
 - **Friends lists by uid.** *Done in the emulator (slice 3):* `Friends` and `FriendRequests` by uid, requests by username or email, and a Friends screen on the Account tab. *Friends who answered* is live on the Create tab (a `Posts` query per prompt, `uid in` the user's friends, 30 at a time). *Friend streak standings* are live too (friends can read each other's `FriendView`). Still to do: opening a friend's profile, and moving the Past feed popup off the old username lists on `Users`.
