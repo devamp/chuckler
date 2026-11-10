@@ -51,13 +51,15 @@ class _VotePageState extends State<VotePage>
 
   /// Slides the page to [to], then runs [then] (moving the queue) and puts
   /// the page back at rest, where the neighbour it slid in now sits.
-  Future<void> _slideTo(double to, {VoidCallback? then}) async {
+  /// With [stay], the page stays at [to] (the refresh hold) instead.
+  Future<void> _slideTo(double to,
+      {VoidCallback? then, bool stay = false}) async {
     _slideAnim = Tween<double>(begin: _offset, end: to).animate(
         CurvedAnimation(parent: _slide, curve: Curves.easeOutCubic));
     await _slide.forward(from: 0);
     if (!mounted) return;
     then?.call();
-    setState(() => _offset = 0);
+    if (!stay) setState(() => _offset = 0);
   }
 
   void _goNext() {
@@ -72,19 +74,49 @@ class _VotePageState extends State<VotePage>
     _slideTo(_travel, then: voting.back);
   }
 
+  /// How far (after the drag is damped) a pull down with nothing to go
+  /// back to must reach to refresh, and where the page waits meanwhile
+  static const double refreshPull = 70;
+  static const double _refreshHold = 56;
+  bool _refreshing = false;
+
+  /// A pull down with no matchup behind this one: it refreshes instead
+  bool _pullsToRefresh(VotingService voting) =>
+      _offset > 0 && !voting.canGoBack;
+
   void _onDragUpdate(DragUpdateDetails d, VotingService voting) {
-    if (_slide.isAnimating) return;
+    if (_slide.isAnimating || _refreshing) return;
     final next = _offset + d.delta.dy;
-    // past either end the page only gives a little
-    final blocked = (next < 0 && !voting.canGoNext) ||
-        (next > 0 && !voting.canGoBack);
-    setState(() => _offset += blocked ? d.delta.dy * 0.25 : d.delta.dy);
+    // past the last matchup the page only gives a little; pulling down
+    // from the first one gives more, to reach the refresh
+    final double give = next < 0 && !voting.canGoNext
+        ? 0.25
+        : next > 0 && !voting.canGoBack
+            ? 0.45
+            : 1;
+    setState(() => _offset += d.delta.dy * give);
+  }
+
+  /// Reloads today's matchups while the page waits a little way down
+  Future<void> _refresh() async {
+    setState(() => _refreshing = true);
+    await _slideTo(_refreshHold, stay: true);
+    try {
+      await loadMatchups(force: true);
+    } finally {
+      if (mounted) {
+        await _slideTo(0);
+        if (mounted) setState(() => _refreshing = false);
+      }
+    }
   }
 
   void _onDragEnd(DragEndDetails d, VotingService voting) {
-    if (_slide.isAnimating) return;
+    if (_slide.isAnimating || _refreshing) return;
     final speed = d.velocity.pixelsPerSecond.dy;
-    if (voting.canGoNext &&
+    if (_pullsToRefresh(voting) && _offset >= refreshPull) {
+      _refresh();
+    } else if (voting.canGoNext &&
         (_offset < -80 || (_offset < -20 && speed < -600))) {
       _slideTo(-_travel, then: voting.next);
     } else if (voting.canGoBack &&
@@ -249,12 +281,54 @@ class _VotePageState extends State<VotePage>
     return Stack(
       fit: StackFit.expand,
       children: [
+        if (_refreshing || _pullsToRefresh(votingService))
+          refreshIndicator(),
         if (_offset > 0 && votingService.canGoBack)
           page(votingService.peek(-1), _offset - height),
         page(m, _offset, current: true),
         if (_offset < 0 && votingService.canGoNext)
           page(votingService.peek(1), _offset + height),
       ],
+    );
+  }
+
+  /// Shows above the page while pulling down to refresh: an arrow that
+  /// turns once the pull is far enough, then a spinner while loading
+  Widget refreshIndicator() {
+    final ready = _offset >= refreshPull;
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      height: _offset.clamp(0.0, double.infinity),
+      child: Center(
+        child: _refreshing
+            ? const SizedBox(
+                width: 26,
+                height: 26,
+                child: CircularProgressIndicator(
+                    strokeWidth: 3, color: Colors.amberAccent))
+            : Opacity(
+                opacity: (_offset / refreshPull).clamp(0.0, 1.0),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AnimatedRotation(
+                      turns: ready ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 150),
+                      child: const Icon(Icons.arrow_downward_rounded,
+                          color: Colors.amberAccent, size: 20),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(ready ? 'Release to refresh' : 'Pull to refresh',
+                        style: const TextStyle(
+                            color: Colors.white70,
+                            fontFamily: 'OpenSans',
+                            fontSize: 13)),
+                  ],
+                ),
+              ),
+      ),
     );
   }
 

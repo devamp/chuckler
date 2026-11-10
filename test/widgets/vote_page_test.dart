@@ -633,4 +633,71 @@ void main() {
     expect(voting.index, 0);
     expect(tester.getCenter(first).dy, moreOrLessEquals(startY));
   });
+
+  group('pull down to refresh', () {
+    Future<void> addMatchup(WidgetTester tester) async {
+      await tester.runAsync(() async {
+        final first = await firestore.doc('MatchUps/sample-1').get();
+        await firestore.doc('MatchUps/fresh-1').set({
+          ...first.data()!,
+          'createdAt': Timestamp.fromDate(DateTime.now()),
+        });
+      });
+    }
+
+    testWidgets('on the first matchup it reloads', (tester) async {
+      await pumpVotePage(tester);
+      final before = voting.length;
+      await addMatchup(tester);
+
+      final first = answer('Anyone know which button is autopilot?');
+      final gesture = await tester.startGesture(tester.getCenter(first));
+      await gesture.moveBy(const Offset(0, 30));
+      await gesture.moveBy(const Offset(0, 200));
+      await tester.pump();
+      expect(find.text('Release to refresh'), findsOneWidget);
+
+      await gesture.up();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.runAsync(
+          () => Future.delayed(const Duration(milliseconds: 100)));
+      await tester.pumpAndSettle();
+      expect(voting.length, before + 1);
+      expect(voting.index, 0);
+      expect(find.text('Release to refresh'), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
+
+    testWidgets('a short pull shows the hint but does not reload',
+        (tester) async {
+      await pumpVotePage(tester);
+      final before = voting.length;
+      await addMatchup(tester);
+      final first = answer('Anyone know which button is autopilot?');
+      final gesture = await tester.startGesture(tester.getCenter(first));
+      await gesture.moveBy(const Offset(0, 30));
+      await gesture.moveBy(const Offset(0, 60));
+      await tester.pump();
+      expect(find.text('Pull to refresh'), findsOneWidget);
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(voting.length, before);
+    });
+
+    testWidgets('with a matchup behind, pulling down goes back instead',
+        (tester) async {
+      await pumpVotePage(tester);
+      await tester.tap(find.text('Skip'));
+      await tester.pumpAndSettle();
+      final gesture = await tester
+          .startGesture(tester.getCenter(answer('Hold my coffee')));
+      await gesture.moveBy(const Offset(0, 30));
+      await gesture.moveBy(const Offset(0, 200));
+      await tester.pump();
+      expect(find.text('Release to refresh'), findsNothing);
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(voting.index, 0);
+    });
+  });
 }
